@@ -1,3 +1,3 @@
 ## GAMER
 
-$_G_enetic _A_rchitecture _M_odel_er_$
+$*G*$enetic $*A*$rchitecture $*M*$odel$*er*$
