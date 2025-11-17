@@ -1,3 +1,3 @@
-## timesMAP
+## GAMER
 
-This program calculates genetic architecture using a multiplicative linear mixed model
+$_G_enetic _A_rchitecture _M_odel_er_$
