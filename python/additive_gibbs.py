@@ -175,7 +175,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	if pie_b < 10000:
 		pie_b = 10000
 
-	a_sigma = 1
+	a_sigma = 2
 	b_sigma = 1
 	a_e = 1
 	b_e = 1
@@ -228,7 +228,6 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 		pie = sample_pie(gamma,pie_a,pie_b)
 		sigma_e = sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
 		gamma = sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta,H_norm_2)
-
 		#gamma = sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
 		alpha,C_alpha = sample_alpha(y,H_beta,C,alpha,sigma_e,C_alpha)
 		#beta,H_beta = sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
@@ -336,7 +335,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	gamma_container[num] = {'pip':np.mean(gamma_trace,axis=0)}
 	del gamma_trace
 	gc.collect()
-	
+
 	# trace_container[num] = trace
 	# alpha_container[num] = alpha_trace
 	# beta_container[num] = beta_trace

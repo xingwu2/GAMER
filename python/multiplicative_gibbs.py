@@ -209,7 +209,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	if pie_b < 10000:
 		pie_b = 10000
 	
-	a_sigma = 1
+	a_sigma = 2
 	b_sigma = 1
 	a_e = 1
 	b_e = 1
