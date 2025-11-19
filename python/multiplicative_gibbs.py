@@ -5,6 +5,7 @@ import pandas as pd
 import time
 import sys
 from numba import njit
+import os
 import geweke
 
 def circle_product_matrix(X, beta):
@@ -189,7 +190,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 
 	## set random seed for the process
 	np.random.seed(int(time.time()) + os.getpid())
-	
+
 	#initiate beta,gamma and H matrix
 	C_r, C_c = C.shape
 

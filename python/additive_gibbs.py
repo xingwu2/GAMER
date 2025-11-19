@@ -5,6 +5,7 @@ import pandas as pd
 import time
 import sys
 from numba import njit
+import os
 import geweke
 
 @njit
