@@ -4,6 +4,7 @@ import math
 import pandas as pd 
 import time
 import sys
+from numba import njit
 import geweke
 
 def circle_product_matrix(X, beta):
@@ -14,6 +15,10 @@ def circle_product_matrix(X, beta):
 	y = np.prod(x_beta + 1, axis=1)
 	return(y)
 
+@njit
+def rbernoulli(p):
+	return 1 if np.random.random() < p else 0
+
 def circle_prodcut_vector(x,beta):
 	y = x * beta + 1
 	return(y)
@@ -21,7 +26,11 @@ def circle_prodcut_vector(x,beta):
 def sample_pie(gamma,pie_a,pie_b):
 	a_new = np.sum(gamma)+pie_a
 	b_new = np.sum(1-gamma)+pie_b
-	pie_new = np.random.beta(a_new,b_new)
+	draw_a = np.random.gamma(a_new,1.0)
+	draw_b = np.random.gamma(b_new,1.0)
+	pie_new = draw_a / (draw_a + draw_b)
+
+	#pie_new = np.random.beta(a_new,b_new)
 	return(pie_new)
 
 def sample_sigma_1(beta,gamma,a_sigma,b_sigma):
@@ -58,6 +67,32 @@ def sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha):
 	return(alpha,C_alpha)
 
 
+@njit
+def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
+	sigma_e_neg2 = sigma_e**-2
+	sigma_1_neg2 = sigma_1**-2
+	sigma_1_sq = sigma_1**2
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+
+	for i in range(ncols):
+		H_beta_neg_H_norm2 = 0.0
+		dot_val = 0.0
+		for r in range(nrows):
+			H_beta_neg = H_beta[r] / (1+H[r, i] * beta[i])
+			H_beta_neg_H_norm2 += (H_beta_neg * H[r,i])**2
+			res_val = y[r] - C_alpha[r] - H_beta_neg 
+			dot_val += res_val * H_beta_neg * H[r, i]
+
+		f = 1.0 / np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1)
+		variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
+
+		mean = variance * dot_val * sigma_e_neg2
+		A = f * np.exp(0.5*mean**2/variance)
+		gamma_0_pie = (1.0 - pie) / ((1.0-pie)+pie*A)
+		gamma[i] = rbernoulli(1.0-gamma_0_pie)
+	return(gamma)
+
 def sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 	sigma_e_neg2 = sigma_e**-2
 	sigma_1_neg2 = sigma_1**-2
@@ -74,6 +109,58 @@ def sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 		gamma_0_pie[i] = (1-pie) / ((1-pie)+pie*A)
 	gamma = np.random.binomial(1,1-gamma_0_pie)
 	return(gamma)
+
+@njit
+def sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
+
+	sigma_e_neg2 = 1 / (sigma_e *sigma_e)
+	sigma_1_neg2 = 1 / (sigma_1 * sigma_1)
+	sigma_1_sq = sigma_1 * sigma_1
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+
+	# precompute y - C_alpha once
+	y_minus_C = np.empty(nrows)
+	for r in range(nrows):
+		y_minus_C[r] = y[r] - C_alpha[r]
+
+	for i in range(ncols):
+
+		beta_i_old = beta[i]
+
+		if beta_i_old != 0.0:
+			for r in range(nrows):
+				h = H[r,i]
+				denom = 1.0 + h*beta_i_old
+				H_beta[r] /= denom
+
+		
+
+		if gamma[i] ==0:
+			beta[i] = 0.0
+			continue
+		else:
+			dot_val = 0.0
+			H_beta_neg_H_norm2 = 0.0
+
+			for r in range(nrows):
+				hb = H_beta[r]
+				h = H[r,i]
+				hb_h = hb * h
+				H_beta_neg_H_norm2 += hb_h * hb_h
+				res_val = y_minus_C[r] - hb
+				dot_val += res_val * hb_h
+			
+			variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
+			mean = variance * dot_val * sigma_e_neg2
+			beta[i] = mean + math.sqrt(variance) * np.random.randn()
+			if abs(beta[i]) < 0.05:
+				beta[i] = 0.0
+			else:
+				for r in range(nrows):
+					H_beta[r] *= (1+H[r, i] * beta[i])
+	return(beta,H_beta)
+
 
 def sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 
@@ -104,6 +191,8 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	C_r, C_c = C.shape
 
 	H = np.array(HapDM)
+	H = np.asfortranarray(H)
+
 
 	H_r,H_c = H.shape
 
@@ -151,6 +240,9 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	H_beta = circle_product_matrix(H,beta)
 	C_alpha = np.matmul(C,alpha)
 
+	C_norm_2 = np.sum(C**2,axis=0)
+	H_norm_2 = np.sum(H**2,axis=0)
+
 	#start sampling
 
 	while it < iters:
@@ -159,20 +251,22 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 		sigma_1 = sample_sigma_1(beta,gamma,a_sigma,b_sigma)
 		pie = sample_pie(gamma,pie_a,pie_b)
 		sigma_e = sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
-		gamma = sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
+		gamma = sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
+		#gamma = sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
 		alpha,C_alpha = sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
-		beta,H_beta = sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+		#beta,H_beta = sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+		beta,H_beta = sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
 		genetic_var = np.var(H_beta)
 		pheno_var = np.var(y - C_alpha)
 		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
 		total_heritability = genetic_var / pheno_var
 		after = time.time()
-		if it > 100 and (total_heritability > 1 or total_heritability < 0.01):
-			#print("unrealistic beta sample",it,genetic_var,pheno_var,total_heritability)
+		if it > 5000 and (total_heritability > 1 or total_heritability < 0.01):
+			print("unrealistic beta sample",it,genetic_var,pheno_var,total_heritability)
 			continue
 
 		else:
-			#print(it,str(after - before),pie,large_beta_ratio,sigma_1,sigma_e,total_heritability)
+			print(it,str(after - before),pie,large_beta_ratio,sigma_1,sigma_e,total_heritability)
 			if it >= burn_in_iter:
 				trace[it-burn_in_iter,:] = [sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]
 				gamma_trace[it-burn_in_iter,:] = gamma

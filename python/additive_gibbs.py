@@ -4,7 +4,12 @@ import math
 import pandas as pd 
 import time
 import sys
+from numba import njit
 import geweke
+
+@njit
+def rbernoulli(p):
+	return 1 if np.random.random() < p else 0
 
 def sample_pie(gamma,pie_a,pie_b):
 	a_new = np.sum(gamma)+pie_a
@@ -46,6 +51,33 @@ def sample_alpha(y,H_beta,C,alpha,sigma_e,C_alpha):
 	return(alpha,C_alpha)
 
 
+@njit
+def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta,H_norm_2):
+	sigma_e_neg2 = 1 / (sigma_e * sigma_e)
+	sigma_1_neg2 = 1 / (sigma_1 * sigma_1)
+	sigma_1_sq = sigma_1 * sigma_1
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+
+	residual = np.empty(nrows)
+	for r in range(nrows):
+		residual[r] = y[r] - C_alpha[r] - H_beta[r]
+
+	for i in range(ncols):
+		dot_val = 0
+		for r in range(nrows):
+			h = H[r,i]
+			dot_val += (residual[r]+h*beta[i]) * h
+		hnorm2 = H_norm_2[i]
+		variance = 1.0 / (hnorm2*sigma_e_neg2 + sigma_1_neg2)
+		mean = variance * sigma_e_neg2 * dot_val
+		f = 1.0 / np.sqrt(hnorm2 * sigma_1_sq * sigma_e_neg2 + 1)
+		A = f * np.exp(0.5*mean*mean/variance)
+		gamma_0_pie = (1.0 - pie) / ((1.0-pie)+pie*A)
+		gamma[i] = rbernoulli(1.0-gamma_0_pie)
+	return(gamma)
+
+
 def sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 	sigma_e_neg2 = sigma_e**-2
 	sigma_1_neg2 = sigma_1**-2
@@ -57,6 +89,51 @@ def sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 	gamma_0_pie = (1-pie) / ((1-pie)+pie*(f*np.exp(0.5*mean**2/variance)))	
 	gamma = np.random.binomial(1,1-gamma_0_pie)
 	return(gamma)
+
+@njit
+def sample_beta_numba(y, C_alpha, H_beta, H, beta, gamma, sigma_1, sigma_e, H_norm_2):
+	sigma_e_neg2 = sigma_e ** -2
+	sigma_1_neg2 = sigma_1 ** -2
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+    
+	for i in range(ncols):
+
+		beta_i_old = beta[i]
+
+		if beta_i_old != 0.0:
+			for r in range(nrows):
+				H_beta[r] -= H[r, i] * beta[i]
+				# h = H[r,i]
+				# minus = h*beta_i_old
+				# H_beta[r] -= minus
+
+		# for r in range(nrows):
+		# 	H_beta[r] -= H[r, i] * beta[i]
+
+		if gamma[i] == 0:
+			beta[i] = 0
+
+		else:
+	        # Compute the dot product over the column using the updated H_beta.
+			dot_val = 0.0
+			for r in range(nrows):
+	            # residual = y[r] - C_alpha[r] - H_beta[r]
+				res_val = y[r] - C_alpha[r] - H_beta[r] 
+				dot_val += res_val * H[r, i]
+	        
+			new_variance = 1.0 / (H_norm_2[i]*sigma_e_neg2 + sigma_1_neg2)
+			new_mean = new_variance * sigma_e_neg2 * dot_val
+	        
+	        # Sample new beta using standard normal (Numba supports np.random.randn)
+			beta[i] = new_mean + math.sqrt(new_variance) * np.random.randn()
+
+			if abs(beta[i]) < 0.05:
+				beta[i] = 0.0
+			else:
+				for r in range(nrows):
+					H_beta[r] += H[r, i] * beta[i]
+	return (beta, H_beta)
 
 def sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 
@@ -84,11 +161,17 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	C_r, C_c = C.shape
 
 	H = np.array(HapDM)
+	H = H - H.mean(axis=0)
+	#H = np.asfortranarray(H)
 
 	H_r,H_c = H.shape
 	##specify hyper parameters
 	pie_a = 1
-	pie_b = H_c / 50
+	pie_b = H_c / 10
+	
+	if pie_b < 10000:
+		pie_b = 10000
+
 	a_sigma = 1
 	b_sigma = 1
 	a_e = 1
@@ -133,14 +216,20 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	H_beta = np.matmul(H,beta)
 	C_alpha = np.matmul(C,alpha)
 
+	C_norm_2 = np.sum(C**2,axis=0)
+	H_norm_2 = np.sum(H**2,axis=0)
+
 	while it < iters:
 		before = time.time()
 		sigma_1 = sample_sigma_1(beta,gamma,a_sigma,b_sigma)
 		pie = sample_pie(gamma,pie_a,pie_b)
 		sigma_e = sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
-		gamma = sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
+		gamma = sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta,H_norm_2)
+
+		#gamma = sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
 		alpha,C_alpha = sample_alpha(y,H_beta,C,alpha,sigma_e,C_alpha)
-		beta,H_beta = sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+		#beta,H_beta = sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+		beta,H_beta = sample_beta_numba(y, C_alpha, H_beta, H, beta, gamma, sigma_1, sigma_e, H_norm_2)
 		genetic_var = np.var(H_beta)
 		pheno_var = np.var(y - C_alpha)
 		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / H_c

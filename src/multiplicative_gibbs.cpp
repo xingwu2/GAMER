@@ -77,7 +77,7 @@ struct Hyperparams
     // Distribution hyperparameters.
     // pi_b is initialized to ratio num_snps / pi_b_ratio
     double pi_a = 1.0;
-    double pi_b = 1.0;
+    //double pi_b = 1.0;
     double pi_b_ratio = 10.0;
     double sigma_1_a = 1.0;
     double sigma_1_b = 1.0;
@@ -1110,7 +1110,7 @@ Posteriors initial_posteriors( Data const& data, Hyperparams const& hyper, State
 void sampling_step(
     Data const& data, Hyperparams const& hyper, Posteriors& post, State& state
 ) {
-    assert( std::isfinite( hyper.min_sigma_1 ) && hyper.min_sigma_1 > 0.0 );
+    //assert( std::isfinite( hyper.min_sigma_1 ) && hyper.min_sigma_1 > 0.0 );
     post.sigma_1 = sample_sigma_1( hyper, post, state );
     // XING CHANGED; no need to do this condition anymore
     // if( post.sigma_1 < hyper.min_sigma_1 ) {

@@ -111,8 +111,8 @@ struct State
     // Random state
     // TODO: other engines are faster - if they are good enough for MCMC, we might want to switch
     std::random_device rand_dev;
-    std::default_random_engine rand_gen{ rand_dev() };
-
+    //std::default_random_engine rand_gen{ rand_dev() };
+    std::mt19937 rand_gen{rand_dev()};
     // Intermediate values kept between the sampling update functions to avoid recomputation
     std::vector<double> c_col_sum_squared;
     std::vector<double> circle_product_x_beta;
@@ -242,8 +242,8 @@ double draw_pi( double a, double b, Generator& gen )
 {
     // Need to get a beta distrib by using two gamma distribs,
     // see https://stackoverflow.com/a/10359049
-    std::gamma_distribution<> dist_gamma_a( a, 1.0 );
-    std::gamma_distribution<> dist_gamma_b( b, 1.0 );
+    std::gamma_distribution<double> dist_gamma_a( a, 1.0 );
+    std::gamma_distribution<double> dist_gamma_b( b, 1.0 );
     auto const draw_a = dist_gamma_a( gen );
     auto const draw_b = dist_gamma_b( gen );
     return draw_a / ( draw_a + draw_b );
@@ -257,7 +257,7 @@ template< class Generator >
 double draw_sigma_std_dev( double a, double b, Generator& gen )
 {
     // see https://stackoverflow.com/a/10359049
-    std::gamma_distribution<> dist_gamma( a, 1.0 / b );
+    std::gamma_distribution<double> dist_gamma( a, 1.0 / b );
     auto const sigma_1_neg2 = dist_gamma( gen );
 	return std::sqrt( 1.0 / sigma_1_neg2 );
 }
@@ -526,8 +526,8 @@ void sample_and_update_alpha( Data const& data, Posteriors& post, State& state )
             for( size_t i = 0; i < data.num_indiv; ++i ) {
                 // the ith individual c_alpha without the cth covariate
                 state.product_c_alpha[i] -= data.c(i, c) * post.alpha[c];
-                auto const c_alpha_negc_i = state.product_c_alpha[i];
-                auto const y_negi = data.y[i] - c_alpha_negc_i - state.circle_product_x_beta[i];
+                //auto const c_alpha_negc_i = state.product_c_alpha[i];
+                auto const y_negi = data.y[i] - state.product_c_alpha[i] - state.circle_product_x_beta[i];
                 dot_prod += y_negi * data.c(i, c);
             }
             auto const new_variance = 1.0 / ( state.c_col_sum_squared[c] * sigma_e_neg2 );
@@ -564,7 +564,7 @@ void sample_and_update_gamma( Data const& data, Posteriors& post, State& state )
         double dot_prod_residuals = 0.0;
 
         for( size_t i = 0; i < data.num_indiv; ++i ) {
-            auto const x_beta_negs_i = state.circle_product_x_beta[i] / (1+ data.x(i,s) * post.beta[s]);
+            auto const x_beta_negs_i = state.circle_product_x_beta[i] / (1.0 + data.x(i,s) * post.beta[s]);
             auto const x_beta_neg_x = x_beta_negs_i * data.x(i, s);
             // Update our sums
             norm_x_beta_x += x_beta_neg_x * x_beta_neg_x;
@@ -1084,8 +1084,8 @@ void initialize_hyperparams( Data const& data, Hyperparams& hyper )
     if( hyper.pi_b <= 1.0 ) {
         throw std::runtime_error( "Too few SNPs, chain would not converge." );
     }
-    if( hyper.pi_b <= 10000 ) {
-        hyper.pi_b = 10000;
+    if( hyper.pi_b <= 50000 ) {
+        hyper.pi_b = 50000;
     }
 
 }
@@ -1112,7 +1112,7 @@ Posteriors initial_posteriors( Data const& data, Hyperparams const& hyper, State
 
     // Init alpha
     post.alpha.resize( num_covar );
-    std::uniform_real_distribution<> dist_uniform_0_1( 0.0, 1.0 );
+    std::uniform_real_distribution<> dist_uniform_0_1( -1.0, 1.0 );
     for( auto& v : post.alpha ) {
         v = dist_uniform_0_1( state.rand_gen );
     }
