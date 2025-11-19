@@ -187,6 +187,9 @@ def sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 
 def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,beta_container,alpha_container):
 
+	## set random seed for the process
+	np.random.seed(int(time.time()) + os.getpid())
+	
 	#initiate beta,gamma and H matrix
 	C_r, C_c = C.shape
 
@@ -268,7 +271,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 		else:
 			if verbose:
 				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,total_heritability)
-				
+
 			if it >= burn_in_iter:
 				trace[it-burn_in_iter,:] = [sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]
 				gamma_trace[it-burn_in_iter,:] = gamma
