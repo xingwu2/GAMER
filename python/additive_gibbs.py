@@ -7,6 +7,7 @@ import sys
 from numba import njit
 import os
 import geweke
+import gc
 
 @njit
 def rbernoulli(p):
@@ -311,10 +312,35 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 
 			it += 1
 	
-	trace_container[num] = trace
-	alpha_container[num] = alpha_trace
-	beta_container[num] = beta_trace
-	gamma_container[num] = gamma_trace
+	
+	# trace values
+	trace_container[num] = {'avg': np.mean(trace,axis=0),
+							'sd' : np.std(trace,axis=0)}
+	del trace
+	gc.collect()
+
+	#print("trace_container[num]",num,trace_container[num]['avg'])
+	#alpha values
+	alpha_container[num] = {'avg': np.mean(alpha_trace,axis=0),
+							'sd': np.std(alpha_trace,axis=0)}
+	del alpha_trace
+	gc.collect()
+	#print("alpha_container[num]",num,alpha_container[num]['avg'])
+	#beta values
+
+	beta_container[num] = {'avg':np.mean(beta_trace,axis=0),
+							'sd':np.std(beta_trace,axis=0)}
+	del beta_trace
+	gc.collect()
+
+	gamma_container[num] = {'pip':np.mean(gamma_trace,axis=0)}
+	del gamma_trace
+	gc.collect()
+	
+	# trace_container[num] = trace
+	# alpha_container[num] = alpha_trace
+	# beta_container[num] = beta_trace
+	# gamma_container[num] = gamma_trace
 
 
 

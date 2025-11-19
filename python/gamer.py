@@ -75,13 +75,21 @@ if __name__ == '__main__':
 	trace_posterior_sd = []
 
 	for num in range(args.num):
-		alpha_posterior.append(np.mean(alpha_container[num],axis=0))
-		alpha_posterior_sd.append(np.std(alpha_container[num],axis=0))
-		beta_posterior.append(np.mean(beta_container[num],axis=0))
-		beta_posterior_sd.append(np.std(beta_container[num],axis=0))
-		trace_posterior.append(np.mean(trace_container[num],axis=0))
-		trace_posterior_sd.append(np.std(trace_container[num],axis=0))
-		pip.append(np.mean(gamma_container[num],axis = 0))
+		alpha_posterior.append(alpha_container[num]["avg"])
+		alpha_posterior_sd.append(alpha_container[num]["sd"])
+		beta_posterior.append(beta_container[num]["avg"])
+		beta_posterior_sd.append(beta_container[num]["sd"])
+		trace_posterior.append(trace_container[num]["avg"])
+		trace_posterior_sd.append(trace_container[num]["sd"])
+		pip.append(gamma_container[num]["pip"])
+		
+		# alpha_posterior.append(np.mean(alpha_container[num],axis=0))
+		# alpha_posterior_sd.append(np.std(alpha_container[num],axis=0))
+		# beta_posterior.append(np.mean(beta_container[num],axis=0))
+		# beta_posterior_sd.append(np.std(beta_container[num],axis=0))
+		# trace_posterior.append(np.mean(trace_container[num],axis=0))
+		# trace_posterior_sd.append(np.std(trace_container[num],axis=0))
+		# pip.append(np.mean(gamma_container[num],axis = 0))
 
 	alpha_posterior_median = np.median(alpha_posterior,axis=0)
 	alpha_posterior_sd_median = np.median(alpha_posterior_sd,axis=0)
