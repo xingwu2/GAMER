@@ -266,7 +266,9 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 			continue
 
 		else:
-			print(it,str(after - before),pie,large_beta_ratio,sigma_1,sigma_e,total_heritability)
+			if verbose:
+				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,total_heritability)
+				
 			if it >= burn_in_iter:
 				trace[it-burn_in_iter,:] = [sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]
 				gamma_trace[it-burn_in_iter,:] = gamma
