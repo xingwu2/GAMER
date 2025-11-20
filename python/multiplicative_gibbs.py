@@ -266,7 +266,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
 		total_heritability = genetic_var / pheno_var
 		after = time.time()
-		if it > 5000 and (total_heritability > 1 or total_heritability < 0.01):
+		if it > 5000 and (total_heritability > 1):
 			print("unrealistic beta sample",it,genetic_var,pheno_var,total_heritability)
 			continue
 
