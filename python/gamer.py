@@ -17,6 +17,7 @@ parser.add_argument('-y',type = str, action = 'store', dest = 'pheno')
 parser.add_argument('-m',type = int, action = 'store', dest = 'mode',default = "1",help="1: multiplicative;	2: additive")
 parser.add_argument('-n',type = int, action = 'store', default = 5, dest = "num", help = 'number of MCMC chains run parallelly')
 parser.add_argument('-v',action = 'store_true', dest = 'verbose',default = False, help = "print out each MCMC iteration")
+parser.add_argument('-b',type = float, action = 'store', default = 10, dest = "pi_b", help = 'tuning parameter for pi_b')
 parser.add_argument('-o',type = str, action = 'store', dest = 'output',help = "the prefix of output files")
 args = parser.parse_args()
 
@@ -54,12 +55,12 @@ if __name__ == '__main__':
 
 	if args.mode == 1:
 		for num in range(args.num):
-			p = mp.Process(target = multi.sampling, args=(args.verbose,y,C,X,12000,args.output,num,trace_container,gamma_container,beta_container,alpha_container))
+			p = mp.Process(target = multi.sampling, args=(args.verbose,y,C,X,12000,args.output,num,trace_container,gamma_container,beta_container,alpha_container,args.pi_b))
 			processes.append(p)
 			p.start()
 	else:
 		for num in range(args.num):
-			p = mp.Process(target = add.sampling, args=(args.verbose,y,C,X,12000,args.output,num,trace_container,gamma_container,beta_container,alpha_container))
+			p = mp.Process(target = add.sampling, args=(args.verbose,y,C,X,12000,args.output,num,trace_container,gamma_container,beta_container,alpha_container,args.pi_b))
 			processes.append(p)
 			p.start()
 
