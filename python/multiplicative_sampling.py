@@ -145,7 +145,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 					convergence_scores[s] = convergence_geweke_test(trace,top5_beta_trace,convergence_start_iter-burn_in_iter,convergence_end_iter[s]-burn_in_iter)
 
 				if np.sum(convergence_scores) == num_convergence_test:
-					print("convergence has been reached at %i iterations. The MCMC Chain has enterred a stationary stage" %(it))
+					print("convergence has been reached at %i iterations. The MCMC Chain has entered a stationary stage" %(it))
 					print("trace values:", trace[it-burn_in_iter,:])
 					break
 				else:
@@ -219,7 +219,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 			gamma_sum += gamma
 
 			if it % 2000 == 0:
-				print("Posterior draws: %i iterations have sampled" %(it), str(after - before),posterior_trace[it,:])
+				print("Posterior draws: %i iterations have been sampled" %(it), str(after - before),posterior_trace[it,:])
 
 			it += 1
 
