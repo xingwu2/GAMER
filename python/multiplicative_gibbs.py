@@ -156,7 +156,7 @@ def sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 			variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
 			mean = variance * dot_val * sigma_e_neg2
 			beta[i] = mean + math.sqrt(variance) * np.random.randn()
-			if abs(beta[i]) < 0.05:
+			if abs(beta[i]) < 0.1:
 				beta[i] = 0.0
 			else:
 				for r in range(nrows):
@@ -204,7 +204,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	##specify hyper parameters
 	pie_a = 1
 	pie_b = H_c*pi_b
-	
+	print(pie_b)
 	# if pie_b < 10000:
 	# 	pie_b = 10000
 	
@@ -253,6 +253,8 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 	
 		before = time.time()
 		sigma_1 = sample_sigma_1(beta,gamma,a_sigma,b_sigma)
+		if sigma_1 < 0.05:
+			sigma_1 = 0.05
 		pie = sample_pie(gamma,pie_a,pie_b)
 		sigma_e = sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
 		gamma = sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
@@ -271,7 +273,7 @@ def sampling(verbose,y,C,HapDM,iters,prefix,num,trace_container,gamma_container,
 
 		else:
 			if verbose:
-				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,total_heritability)
+				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,max(abs(beta)),total_heritability)
 
 			if it >= burn_in_iter:
 				trace[it-burn_in_iter,:] = [sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]

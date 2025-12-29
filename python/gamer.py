@@ -7,8 +7,9 @@ import re
 import multiprocessing as mp
 import time
 
-import multiplicative_gibbs as multi
+import multiplicative_sampling as multi
 import additive_gibbs as add
+import utility
 
 parser = argparse.ArgumentParser()
 parser.add_argument('-g',type = str, action = 'store', dest = 'geno')
@@ -55,7 +56,7 @@ if __name__ == '__main__':
 
 	if args.mode == 1:
 		for num in range(args.num):
-			p = mp.Process(target = multi.sampling, args=(args.verbose,y,C,X,12000,args.output,num,trace_container,gamma_container,beta_container,alpha_container,args.pi_b))
+			p = mp.Process(target = multi.sampling, args=(args.verbose,y,C,X,args.output,num,trace_container,gamma_container,beta_container,alpha_container,args.pi_b))
 			processes.append(p)
 			p.start()
 	else:
@@ -67,52 +68,58 @@ if __name__ == '__main__':
 	for process in processes:
 		process.join()
 
-	alpha_posterior = []
-	alpha_posterior_sd = []
-	beta_posterior = []
-	beta_posterior_sd = []
-	pip = []
-	trace_posterior = []
-	trace_posterior_sd = []
+	alpha_posterior_all_chains = []
+	alpha_posterior_sd_all_chains = []
+	beta_posterior_all_chains = []
+	beta_posterior_sd_all_chains = []
+	gamma_all_chains = []
+	trace_posterior_all_chains = []
 
 	for num in range(args.num):
-		alpha_posterior.append(alpha_container[num]["avg"])
-		alpha_posterior_sd.append(alpha_container[num]["sd"])
-		beta_posterior.append(beta_container[num]["avg"])
-		beta_posterior_sd.append(beta_container[num]["sd"])
-		trace_posterior.append(trace_container[num]["avg"])
-		trace_posterior_sd.append(trace_container[num]["sd"])
-		pip.append(gamma_container[num]["pip"])
-		
-		# alpha_posterior.append(np.mean(alpha_container[num],axis=0))
-		# alpha_posterior_sd.append(np.std(alpha_container[num],axis=0))
-		# beta_posterior.append(np.mean(beta_container[num],axis=0))
-		# beta_posterior_sd.append(np.std(beta_container[num],axis=0))
-		# trace_posterior.append(np.mean(trace_container[num],axis=0))
-		# trace_posterior_sd.append(np.std(trace_container[num],axis=0))
-		# pip.append(np.mean(gamma_container[num],axis = 0))
+		alpha_posterior_all_chains.append(alpha_container[num]["avg"])
+		alpha_posterior_sd_all_chains.append(alpha_container[num]["M2"])
+		beta_posterior_all_chains.append(beta_container[num]["avg"])
+		beta_posterior_sd_all_chains.append(beta_container[num]["M2"])
+		trace_posterior_all_chains.append(trace_container[num])
+		gamma_all_chains.append(gamma_container[num])
 
-	alpha_posterior_median = np.median(alpha_posterior,axis=0)
-	alpha_posterior_sd_median = np.median(alpha_posterior_sd,axis=0)
-	beta_posterior_median = np.median(beta_posterior,axis=0)
-	beta_posterior_sd_median = np.median(beta_posterior_sd,axis=0)
-	trace_posterior_median = np.median(trace_posterior,axis=0)
-	trace_posterior_sd_median = np.median(trace_posterior_sd,axis=0)
-	pip_median = np.median(pip,axis=0)
+	trace_posterior_all_chains = np.vstack(trace_posterior_all_chains)
+	trace_posterior = np.mean(trace_posterior_all_chains,axis=0)
+	trace_posterior_sd = np.std(trace_posterior_all_chains,axis=0)
+	
+
+	pip = np.mean(gamma_all_chains,axis=0)
+
+	beta_posterior = beta_container[0]["avg"]
+	beta_posterior_M2 = beta_container[0]["M2"]
+	alpha_posterior = alpha_container[0]["avg"]
+	alpha_posterior_M2 = alpha_container[0]["M2"]
+	
+	N=10000
+
+	if args.num > 1:
+		for num in range(1,args.num):
+			beta_posterior,beta_posterior_M2,N = utility.merge_welford(beta_posterior,beta_posterior_M2,N,beta_container[num]["avg"],beta_container[num]["M2"],10000)
+			alpha_posterior,alpha_posterior_M2,N = utility.merge_welford(alpha_posterior,alpha_posterior_M2,N,alpha_container[num]["avg"],alpha_container[num]["M2"],10000)
+
+
+	beta_posterior_sd = np.sqrt(beta_posterior_M2/(N-1))
+	alpha_posterior_sd = np.sqrt(alpha_posterior_M2/(N-1))
+
 
 	OUTPUT_TRACE = open(prefix+"param.txt","w")
-	for i in range(len(trace_posterior_median)):
-		print("%f\t%f" %(trace_posterior_median[i],trace_posterior_sd_median[i]),file = OUTPUT_TRACE)
+	for i in range(len(trace_posterior)):
+		print("%f\t%f" %(trace_posterior[i],trace_posterior_sd[i]),file = OUTPUT_TRACE)
 		
 	OUTPUT_ALPHA = open(prefix+"alpha.txt","w")
-	for i in range(len(alpha_posterior_median)):
-		print("%f\t%f" %(alpha_posterior_median[i],alpha_posterior_sd_median[i]),file = OUTPUT_ALPHA)
+	for i in range(len(alpha_posterior)):
+		print("%f\t%f" %(alpha_posterior[i],alpha_posterior_sd[i]),file = OUTPUT_ALPHA)
 
 	OUTPUT_BETA = open(prefix+"beta.txt","w")
-	for i in range(len(beta_posterior_median)):
-		print("%s\t%f\t%f" %(i,beta_posterior_median[i],beta_posterior_sd_median[i]),file = OUTPUT_BETA)
+	for i in range(len(beta_posterior)):
+		print("%s\t%f\t%f" %(i,beta_posterior[i],beta_posterior_sd[i]),file = OUTPUT_BETA)
 
 	OUTPUT_PIP = open(prefix+"pip.txt","w")
-	for i in range(len(pip_median)):
-		print("%s\t%f" %(i,pip_median[i]),file = OUTPUT_PIP)
+	for i in range(len(pip)):
+		print("%s\t%f" %(i,pip[i]),file = OUTPUT_PIP)
 	
