@@ -90,21 +90,26 @@ if __name__ == '__main__':
 
 	pip = np.mean(gamma_all_chains,axis=0)
 
-	beta_posterior = beta_container[0]["avg"]
-	beta_posterior_M2 = beta_container[0]["M2"]
-	alpha_posterior = alpha_container[0]["avg"]
-	alpha_posterior_M2 = alpha_container[0]["M2"]
+	# beta_posterior = beta_container[0]["avg"]
+	# beta_posterior_M2 = beta_container[0]["M2"]
+	# alpha_posterior = alpha_container[0]["avg"]
+	# alpha_posterior_M2 = alpha_container[0]["M2"]
+	beta_posterior = []
+	beta_posterior_M2 = []
+	alpha_posterior = []
+	alpha_posterior_M2 = []
 	
-	N=10000
+	N_beta=0
+	N_alpha=0
 
-	if args.num > 1:
-		for num in range(1,args.num):
-			beta_posterior,beta_posterior_M2,N = utility.merge_welford(beta_posterior,beta_posterior_M2,N,beta_container[num]["avg"],beta_container[num]["M2"],10000)
-			alpha_posterior,alpha_posterior_M2,N = utility.merge_welford(alpha_posterior,alpha_posterior_M2,N,alpha_container[num]["avg"],alpha_container[num]["M2"],10000)
+	if args.num > 0:
+		for num in range(args.num):
+			beta_posterior,beta_posterior_M2,N_beta = utility.merge_welford(beta_posterior,beta_posterior_M2,N_beta,beta_container[num]["avg"],beta_container[num]["M2"],10000)
+			alpha_posterior,alpha_posterior_M2,N_alpha = utility.merge_welford(alpha_posterior,alpha_posterior_M2,N_alpha,alpha_container[num]["avg"],alpha_container[num]["M2"],10000)
 
 
-	beta_posterior_sd = np.sqrt(beta_posterior_M2/(N-1))
-	alpha_posterior_sd = np.sqrt(alpha_posterior_M2/(N-1))
+	beta_posterior_sd = np.sqrt(beta_posterior_M2/(N_beta-1))
+	alpha_posterior_sd = np.sqrt(alpha_posterior_M2/(N_alpha-1))
 
 
 	OUTPUT_TRACE = open(prefix+"param.txt","w")
