@@ -3,11 +3,10 @@ import math
 import time
 import os
 
-import multiplicative_gibbs as m_gibbs
+import additive_gibbs as a_gibbs
 import utility
 
 def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_container,alpha_container,pi_b):
-
 	## set random seed for the process
 	np.random.seed(int(time.time()) + os.getpid())
 
@@ -18,10 +17,10 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	H = np.asfortranarray(H)
 
 	H_r,H_c = H.shape
-
 	##specify hyper parameters
 	pie_a = 1
 	pie_b = H_c*pi_b
+
 	a_sigma = 1
 	b_sigma = 1
 	a_e = 1
@@ -32,7 +31,15 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	pie = np.random.beta(pie_a,pie_b)
 	
 	if verbose > 0:
-		print("parameter initiation:",sigma_1,sigma_e,pie)
+		print("initiate:",sigma_1,sigma_e,pie)
+
+	#initiate beta,gamma and H matrix
+	C_r, C_c = C.shape
+
+	H = np.array(HapDM)
+
+	#for simulation only
+	H_r,H_c = H.shape
 
 	#initiate alpha, alpha_trace, beta_trace and gamma_trace
 
@@ -53,49 +60,45 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	alpha = np.random.random(size = C_c)
 	gamma = np.random.binomial(1,pie,H_c)
 	beta = np.array(np.zeros(H_c))
-	
+
 	for i in range(H_c):
 		if gamma[i] == 0:
 			beta[i] = 0
 		else:
 			beta[i] = np.random.normal(0,sigma_1) 
 
-	## Pre-compute the H_beta and C_alpha in the beginning, and update them later in the MCMC
-	H_beta = m_gibbs.circle_product_matrix(H,beta)
+	#start sampling
+
+	H_beta = np.matmul(H,beta)
 	C_alpha = np.matmul(C,alpha)
 
 	C_norm_2 = np.sum(C**2,axis=0)
 	H_norm_2 = np.sum(H**2,axis=0)
 
-	#first sampling for convergence
-
 	while it < convergence_iter:
-	
 		before = time.time()
-		sigma_1 = m_gibbs.sample_sigma_1(beta,gamma,a_sigma,b_sigma)
-		if sigma_1 < 0.05:
-			sigma_1 = 0.05
-		pie = m_gibbs.sample_pie(gamma,pie_a,pie_b)
-		sigma_e = m_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
-		gamma = m_gibbs.sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
-		alpha,C_alpha = m_gibbs.sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
-		beta,H_beta = m_gibbs.sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+		sigma_1 = a_gibbs.sample_sigma_1(beta,gamma,a_sigma,b_sigma)
+		pie = a_gibbs.sample_pie(gamma,pie_a,pie_b)
+		sigma_e = a_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
+		gamma = a_gibbs.sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta,H_norm_2)
+		alpha,C_alpha = a_gibbs.sample_alpha(y,H_beta,C,alpha,sigma_e,C_alpha)
+		beta,H_beta = a_gibbs.sample_beta_numba(y, C_alpha, H_beta, H, beta, gamma, sigma_1, sigma_e, H_norm_2)
 		genetic_var = np.var(H_beta)
 		pheno_var = np.var(y - C_alpha)
-		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
+		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / H_c
 		total_heritability = genetic_var / pheno_var
 		alpha_norm = np.linalg.norm(alpha, ord=2)
 		beta_norm = np.linalg.norm(beta, ord=2)
 
 		after = time.time()
-		if it > 2000 and (total_heritability > 1):
+		if it > 2000 and total_heritability > 1:
 			if verbose > 0:
 				print("unrealistic beta sample",it,genetic_var,pheno_var,total_heritability)
 			continue
 
 		else:
 			if verbose > 1:
-				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,max(abs(beta)),total_heritability)
+				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,total_heritability)
 
 			if it >= burn_in_iter:
 				trace[it-burn_in_iter,:] = [alpha_norm,beta_norm,sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]
@@ -134,8 +137,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 					#print(it,burn_in_iter,convergence_iter,convergence_start_iter,convergence_end_iter,trace.shape)
 
 			it += 1
-
-
+	
 
 	## MCMC draws for posterior mean
 
@@ -157,14 +159,12 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	while it < posterior_draws:
 	
 		before = time.time()
-		sigma_1 = m_gibbs.sample_sigma_1(beta,gamma,a_sigma,b_sigma)
-		if sigma_1 < 0.05:
-			sigma_1 = 0.05
-		pie = m_gibbs.sample_pie(gamma,pie_a,pie_b)
-		sigma_e = m_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
-		gamma = m_gibbs.sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
-		alpha,C_alpha = m_gibbs.sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
-		beta,H_beta = m_gibbs.sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+		sigma_1 = a_gibbs.sample_sigma_1(beta,gamma,a_sigma,b_sigma)
+		pie = a_gibbs.sample_pie(gamma,pie_a,pie_b)
+		sigma_e = a_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
+		gamma = a_gibbs.sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta,H_norm_2)
+		alpha,C_alpha = a_gibbs.sample_alpha(y,H_beta,C,alpha,sigma_e,C_alpha)
+		beta,H_beta = a_gibbs.sample_beta_numba(y, C_alpha, H_beta, H, beta, gamma, sigma_1, sigma_e, H_norm_2)
 		genetic_var = np.var(H_beta)
 		pheno_var = np.var(y - C_alpha)
 		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
@@ -179,7 +179,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 			continue
 
 		else:
-			if verbose > 1:
+			if verbose >1 :
 				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,max(abs(beta)),total_heritability)
 
 			posterior_trace[it,:] = [alpha_norm,beta_norm,sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]
@@ -190,8 +190,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 
 			if verbose > 0:
 				if it > 0 and it % 2000 == 0:
-					print("Posterior draws: %i iterations have been sampled" %(it), str(after - before),posterior_trace[it,:])
-
+					print("Posterior draws: %i iterations have been sampled for chain %i" %(it,num), str(after - before),posterior_trace[it,:])
 			it += 1
 
 	trace_container[num] = posterior_trace
@@ -207,4 +206,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	gamma_container[num] = gamma_sum / posterior_draws
 
 
+
+
+	
 
