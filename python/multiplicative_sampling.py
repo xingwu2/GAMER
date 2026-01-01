@@ -6,7 +6,7 @@ import os
 import multiplicative_gibbs as m_gibbs
 import utility
 
-def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_container,alpha_container,pi_b):
+def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,pi_b):
 
 	## set random seed for the process
 	np.random.seed(int(time.time()) + os.getpid())
@@ -113,6 +113,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 					convergence_scores[s] = utility.convergence_geweke_test(trace,top5_beta_trace,convergence_start_iter-burn_in_iter,convergence_end_iter[s]-burn_in_iter)
 
 				if np.sum(convergence_scores) == num_convergence_test:
+					convergence_container[num] = 1
 					if verbose > 0:
 						print("convergence has been reached at %i iterations for chain %i. The MCMC Chain has entered a stationary stage" %(it,num))
 						print("trace values:", trace[it-burn_in_iter,:])
@@ -134,77 +135,100 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 					#print(it,burn_in_iter,convergence_iter,convergence_start_iter,convergence_end_iter,trace.shape)
 
 			it += 1
+ 	
 
+			if it > 100000: 
+				convergence_container[num] = 0
+				break
 
+	#print("convergence indicator:", convergence_container[num] )
 
-	## MCMC draws for posterior mean
+	if convergence_container[num] == 1:
 
-	posterior_draws = 10000
+		#print("passed convergence test %i" %(num))
+		## MCMC draws for posterior mean
 
-	alpha_mean = np.zeros(C_c)
-	beta_mean = np.zeros(H_c)
-	gamma_sum = np.zeros(H_c)
+		posterior_draws = 10000
 
-	alpha_M2 = np.zeros(C_c)
-	beta_M2 = np.zeros(H_c)
+		alpha_mean = np.zeros(C_c)
+		beta_mean = np.zeros(H_c)
+		gamma_sum = np.zeros(H_c)
 
-	posterior_trace = np.empty((posterior_draws,7))
+		alpha_M2 = np.zeros(C_c)
+		beta_M2 = np.zeros(H_c)
 
-	alpha_trace = np.empty((posterior_draws,C_c))
+		posterior_trace = np.empty((posterior_draws,7))
 
-	it = 0
+		alpha_trace = np.empty((posterior_draws,C_c))
 
-	while it < posterior_draws:
-	
-		before = time.time()
-		sigma_1 = m_gibbs.sample_sigma_1(beta,gamma,a_sigma,b_sigma)
-		if sigma_1 < 0.05:
-			sigma_1 = 0.05
-		pie = m_gibbs.sample_pie(gamma,pie_a,pie_b)
-		sigma_e = m_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
-		gamma = m_gibbs.sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
-		alpha,C_alpha = m_gibbs.sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
-		beta,H_beta = m_gibbs.sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
-		genetic_var = np.var(H_beta)
-		pheno_var = np.var(y - C_alpha)
-		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
-		total_heritability = genetic_var / pheno_var
-		alpha_norm = np.linalg.norm(alpha, ord=2)
-		beta_norm = np.linalg.norm(beta, ord=2)
+		it = 0
 
-		after = time.time()
-		if total_heritability > 1:
-			if verbose > 0:
-				print("unrealistic beta sample",it,genetic_var,pheno_var,total_heritability)
-			continue
+		while it < posterior_draws:
+		
+			before = time.time()
+			sigma_1 = m_gibbs.sample_sigma_1(beta,gamma,a_sigma,b_sigma)
+			if sigma_1 < 0.05:
+				sigma_1 = 0.05
+			pie = m_gibbs.sample_pie(gamma,pie_a,pie_b)
+			sigma_e = m_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
+			gamma = m_gibbs.sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
+			alpha,C_alpha = m_gibbs.sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
+			beta,H_beta = m_gibbs.sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+			genetic_var = np.var(H_beta)
+			pheno_var = np.var(y - C_alpha)
+			large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
+			total_heritability = genetic_var / pheno_var
+			alpha_norm = np.linalg.norm(alpha, ord=2)
+			beta_norm = np.linalg.norm(beta, ord=2)
 
-		else:
-			if verbose > 1:
-				print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,max(abs(beta)),total_heritability)
+			after = time.time()
+			if total_heritability > 1:
+				if verbose > 0:
+					print("unrealistic beta sample",it,genetic_var,pheno_var,total_heritability)
+				continue
 
-			posterior_trace[it,:] = [alpha_norm,beta_norm,sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]
-			alpha_trace[it,:] = alpha
-			beta_mean,beta_M2 = utility.welford(beta_mean,beta_M2,beta,it)
-			alpha_mean,alpha_M2 = utility.welford(alpha_mean,alpha_M2,alpha,it)
-			gamma_sum += gamma
+			else:
+				if verbose > 1:
+					print(it,str(after - before),pie,sigma_1,sigma_e,sum(gamma),large_beta_ratio,max(abs(beta)),total_heritability)
 
-			if verbose > 0:
-				if it > 0 and it % 2000 == 0:
-					print("Posterior draws: %i iterations have been sampled" %(it), str(after - before),posterior_trace[it,:])
+				posterior_trace[it,:] = [alpha_norm,beta_norm,sigma_1,sigma_e,large_beta_ratio,total_heritability,sum(gamma)]
+				alpha_trace[it,:] = alpha
+				beta_mean,beta_M2 = utility.welford(beta_mean,beta_M2,beta,it)
+				alpha_mean,alpha_M2 = utility.welford(alpha_mean,alpha_M2,alpha,it)
+				gamma_sum += gamma
 
-			it += 1
+				if verbose > 0:
+					if it > 0 and it % 2000 == 0:
+						print("Posterior draws: %i iterations have been sampled for chain %i" %(it,num), str(after - before),posterior_trace[it,:])
 
-	trace_container[num] = posterior_trace
+				it += 1
 
-	#alpha values
-	alpha_container[num] = {'avg': alpha_mean,
-							'M2': alpha_M2}
+		trace_container[num] = posterior_trace
 
-	#beta values
-	beta_container[num] = {'avg':beta_mean,
-							'M2':beta_M2}
+		#alpha values
+		alpha_container[num] = {'avg': alpha_mean,
+								'M2': alpha_M2}
 
-	gamma_container[num] = gamma_sum / posterior_draws
+		#beta values
+		beta_container[num] = {'avg':beta_mean,
+								'M2':beta_M2}
+
+		gamma_container[num] = gamma_sum / posterior_draws
+
+	else:
+
+		#print("failed convergence test %i" %(num))
+		trace_container[num] = []
+
+		#alpha values
+		alpha_container[num] = {'avg': [],
+								'M2': []}
+
+		#beta values
+		beta_container[num] = {'avg':[],
+								'M2':[]}
+
+		gamma_container[num] = []
 
 
 
