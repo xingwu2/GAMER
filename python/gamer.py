@@ -52,6 +52,8 @@ def main():
 	alpha_container = mp.Manager().dict()
 	convergence_container = mp.Manager().dict()
 
+	print("multiprocessing method:",mp.get_start_method())
+
 	processes = []
 
 	if args.mode == 1:

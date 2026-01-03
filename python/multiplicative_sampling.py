@@ -6,16 +6,13 @@ import os
 import multiplicative_gibbs as m_gibbs
 import utility
 
-def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,pi_b):
+def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,pi_b):
 
 	## set random seed for the process
 	np.random.seed(int(time.time()) + os.getpid())
 
 	#initiate beta,gamma and H matrix
 	C_r, C_c = C.shape
-
-	H = np.array(HapDM)
-	H = np.asfortranarray(H)
 
 	H_r,H_c = H.shape
 
@@ -65,7 +62,7 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	C_alpha = np.matmul(C,alpha)
 
 	C_norm_2 = np.sum(C**2,axis=0)
-	H_norm_2 = np.sum(H**2,axis=0)
+	H_norm_2 = utility.col_norm2_chunked(H, chunk_rows=2000)
 
 	#first sampling for convergence
 
@@ -84,7 +81,10 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 		pheno_var = np.var(y - C_alpha)
 		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
 		total_heritability = genetic_var / pheno_var
-		alpha_norm = np.linalg.norm(alpha, ord=2)
+		if C_c == 1:
+			alpha_norm = alpha
+		else:
+			alpha_norm = np.linalg.norm(alpha, ord=2)
 		beta_norm = np.linalg.norm(beta, ord=2)
 
 		after = time.time()
@@ -178,7 +178,10 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 			pheno_var = np.var(y - C_alpha)
 			large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
 			total_heritability = genetic_var / pheno_var
-			alpha_norm = np.linalg.norm(alpha, ord=2)
+			if C_c == 1:
+				alpha_norm = alpha
+			else:
+				alpha_norm = np.linalg.norm(alpha, ord=2)
 			beta_norm = np.linalg.norm(beta, ord=2)
 
 			after = time.time()

@@ -62,11 +62,22 @@ def vcf_processing(vcf):
         dosage = np.sum(g,axis=1)
         gt.append(dosage)
 
-    X = np.vstack(gt).T
+    X = np.asfortranarray(np.vstack(gt).T, dtype=np.uint8)
 
     print("finished loading %i variants and %i individuals" %(X.shape[1],X.shape[0]))
     
     return(chromosome, ID, position, X )
+
+def col_norm2_chunked(H, chunk_rows=2000, out_dtype=np.float64):
+    n, p = H.shape
+    out = np.zeros(p, dtype=out_dtype)
+
+    for s in range(0, n, chunk_rows):
+        block = H[s:s+chunk_rows, :].astype(np.float32, copy=False)
+        # sum of squares per column for this block
+        out += np.einsum('ij,ij->j', block, block)
+
+    return(out)
 
 
 

@@ -6,15 +6,12 @@ import os
 import additive_gibbs as a_gibbs
 import utility
 
-def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,pi_b):
+def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,pi_b):
 	## set random seed for the process
 	np.random.seed(int(time.time()) + os.getpid())
 
 	#initiate beta,gamma and H matrix
 	C_r, C_c = C.shape
-
-	H = np.array(HapDM)
-	H = np.asfortranarray(H)
 
 	H_r,H_c = H.shape
 	##specify hyper parameters
@@ -32,14 +29,6 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	
 	if verbose > 0:
 		print("initiate:",sigma_1,sigma_e,pie)
-
-	#initiate beta,gamma and H matrix
-	C_r, C_c = C.shape
-
-	H = np.array(HapDM)
-
-	#for simulation only
-	H_r,H_c = H.shape
 
 	#initiate alpha, alpha_trace, beta_trace and gamma_trace
 
@@ -73,8 +62,8 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 	C_alpha = np.matmul(C,alpha)
 
 	C_norm_2 = np.sum(C**2,axis=0)
-	H_norm_2 = np.sum(H**2,axis=0)
-
+	H_norm_2 = utility.col_norm2_chunked(H, chunk_rows=2000)
+	
 	while it < convergence_iter:
 		before = time.time()
 		sigma_1 = a_gibbs.sample_sigma_1(beta,gamma,a_sigma,b_sigma)
@@ -87,7 +76,10 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 		pheno_var = np.var(y - C_alpha)
 		large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / H_c
 		total_heritability = genetic_var / pheno_var
-		alpha_norm = np.linalg.norm(alpha, ord=2)
+		if C_c == 1:
+			alpha_norm = alpha
+		else:
+			alpha_norm = np.linalg.norm(alpha, ord=2)
 		beta_norm = np.linalg.norm(beta, ord=2)
 
 		after = time.time()
@@ -179,7 +171,10 @@ def sampling(verbose,y,C,HapDM,prefix,num,trace_container,gamma_container,beta_c
 			pheno_var = np.var(y - C_alpha)
 			large_beta_ratio = np.sum(np.absolute(beta) > 0.3) / len(beta)
 			total_heritability = genetic_var / pheno_var
-			alpha_norm = np.linalg.norm(alpha, ord=2)
+			if C_c == 1:
+				alpha_norm = alpha
+			else:
+				alpha_norm = np.linalg.norm(alpha, ord=2)
 			beta_norm = np.linalg.norm(beta, ord=2)
 
 			after = time.time()
