@@ -81,27 +81,16 @@ def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 		H_beta_neg_H_norm2 = 0.0
 		dot_val = 0.0
 		for r in range(nrows):
-			if 1+H[r, i] * beta[i] ==0:
-				print(H[r, i], beta[i])
-				tmp = 0.000
-				print("error, 1+H[r, i] * beta[i]")
 			H_beta_neg = H_beta[r] / (1+H[r, i] * beta[i])
 			H_beta_neg_H_norm2 += (H_beta_neg * H[r,i])**2
 			res_val = y[r] - C_alpha[r] - H_beta_neg 
 			dot_val += res_val * H_beta_neg * H[r, i]
-		if np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1) == 0:
-			print("error, np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1)")
+
 		f = 1.0 / np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1)
-		if (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2) == 0:
-			print("error, (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)")
 		variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
-		if variance ==0:
-			print("error,variance")
 
 		mean = variance * dot_val * sigma_e_neg2
 		A = f * np.exp(0.5*mean**2/variance)
-		if ((1.0-pie)+pie*A) ==0:
-			print("error, ((1.0-pie)+pie*A)")
 		gamma_0_pie = (1.0 - pie) / ((1.0-pie)+pie*A)
 		gamma[i] = rbernoulli(1.0-gamma_0_pie)
 	return(gamma)
