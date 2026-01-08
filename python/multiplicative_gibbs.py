@@ -81,19 +81,43 @@ def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 		H_beta_neg_H_norm2 = 0.0
 		dot_val = 0.0
 		for r in range(nrows):
+			if 1+H[r, i] * beta[i] ==0:
+				print(H[r, i], beta[i])
+				tmp = 0.000
+				print("error, 1+H[r, i] * beta[i]")
 			H_beta_neg = H_beta[r] / (1+H[r, i] * beta[i])
 			H_beta_neg_H_norm2 += (H_beta_neg * H[r,i])**2
 			res_val = y[r] - C_alpha[r] - H_beta_neg 
 			dot_val += res_val * H_beta_neg * H[r, i]
-
+		if np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1) == 0:
+			print("error, np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1)")
 		f = 1.0 / np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1)
+		if (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2) == 0:
+			print("error, (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)")
 		variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
+		if variance ==0:
+			print("error,variance")
 
 		mean = variance * dot_val * sigma_e_neg2
 		A = f * np.exp(0.5*mean**2/variance)
+		if ((1.0-pie)+pie*A) ==0:
+			print("error, ((1.0-pie)+pie*A)")
 		gamma_0_pie = (1.0 - pie) / ((1.0-pie)+pie*A)
 		gamma[i] = rbernoulli(1.0-gamma_0_pie)
 	return(gamma)
+
+@njit
+def recompute_row_product_excluding_i(H, beta, r, exclude_i):
+	p = 1.0
+	ncols = beta.shape[0]
+	for j in range(ncols):
+		if j == exclude_i:
+			continue
+		bj = beta[j]
+		if bj != 0.0:
+			p *= (1.0 + H[r, j] * bj)
+	return(p)
+
 
 def sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 	sigma_e_neg2 = sigma_e**-2
@@ -162,6 +186,90 @@ def sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 				for r in range(nrows):
 					H_beta[r] *= (1+H[r, i] * beta[i])
 	return(beta,H_beta)
+
+@njit
+def sample_beta_numba_safe(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
+	tau = 1e-10
+	max_tries = 50
+	sigma_e_neg2 = 1.0 / (sigma_e *sigma_e)
+	sigma_1_neg2 = 1.0 / (sigma_1 * sigma_1)
+	sigma_1_sq = sigma_1 * sigma_1
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+
+	# precompute y - C_alpha once
+	y_minus_C = np.empty(nrows)
+	for r in range(nrows):
+		y_minus_C[r] = y[r] - C_alpha[r]
+
+	for i in range(ncols):
+
+		beta_i_old = beta[i]
+
+		if beta_i_old != 0.0:
+			for r in range(nrows):
+				h = H[r,i]
+				denom = 1.0 + h*beta_i_old
+				if math.fabs(denom) < tau:
+					H_beta[r] = recompute_row_product_excluding_i(H, beta, r, i)
+				else:
+					H_beta[r] /= denom
+				
+				if not math.isfinite(H_beta[r]):
+					H_beta[r] = recompute_row_product_excluding_i(H, beta, r, i)
+
+		if gamma[i] ==0:
+			beta[i] = 0.0
+			continue
+		else:
+			dot_val = 0.0
+			H_beta_neg_H_norm2 = 0.0
+
+			for r in range(nrows):
+				hb = H_beta[r]
+				h = H[r,i]
+				hb_h = hb * h
+				H_beta_neg_H_norm2 += hb_h * hb_h
+				res_val = y_minus_C[r] - hb
+				dot_val += res_val * hb_h
+			
+			variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
+			mean = variance * dot_val * sigma_e_neg2
+			
+			## draw beta_i but will reject if that creates near-zero 1+H[r,i]*beta[i]
+			bnew = 0.0
+			accepted = False
+			for _ in range(max_tries):
+				candidate = mean + math.sqrt(variance) * np.random.randn()
+				ok = True
+				for r in range(nrows):
+					denom_new = 1.0 + H[r, i] * candidate
+					if math.fabs(denom_new) < tau:
+						ok = False
+						break
+				if ok:
+					bnew = candidate
+					accepted = True
+					break
+			if not accepted:
+				# if we failed to draw a good beta_i, just set it to zero
+				bnew = 0.0
+
+			beta[i] = bnew
+			if beta[i] != 0.0:
+				for r in range(nrows):
+					H_beta[r] *= (1+H[r, i] * beta[i])
+					
+					#double safety: make sure H_beta[r] is finite
+					if not math.isfinite(H_beta[r]):
+						p = 1.0
+						for j in range(ncols):
+							bj = beta[j]
+							if bj != 0.0:
+								p *= (1.0 + H[r, j] * bj)
+						H_beta[r] = p
+	return(beta,H_beta)
+
 
 
 def sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
