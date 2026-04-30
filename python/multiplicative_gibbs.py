@@ -96,6 +96,36 @@ def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 	return(gamma)
 
 @njit
+def sample_gamma_numba_safe(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
+	sigma_e_neg2 = sigma_e**-2
+	sigma_1_neg2 = sigma_1**-2
+	sigma_1_sq = sigma_1**2
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+
+	for i in range(ncols):
+		H_beta_neg_H_norm2 = 0.0
+		dot_val = 0.0
+		for r in range(nrows):
+			if (1+H[r, i] * beta[i] == 0.0):
+				H_beta_neg = recompute_row_product_excluding_i(H, beta, r, i)
+			else:
+				H_beta_neg = H_beta[r] / (1+H[r, i] * beta[i])
+			H_beta_neg_H_norm2 += (H_beta_neg * H[r,i])**2
+			res_val = y[r] - C_alpha[r] - H_beta_neg 
+			dot_val += res_val * H_beta_neg * H[r, i]
+
+		f = 1.0 / np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1)
+		variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
+
+		mean = variance * dot_val * sigma_e_neg2
+		A = f * np.exp(0.5*mean**2/variance)
+		gamma_0_pie = (1.0 - pie) / ((1.0-pie)+pie*A)
+		gamma[i] = rbernoulli(1.0-gamma_0_pie)
+	return(gamma)
+
+
+@njit
 def recompute_row_product_excluding_i(H, beta, r, exclude_i):
 	p = 1.0
 	ncols = beta.shape[0]
@@ -230,6 +260,7 @@ def sample_beta_numba_safe(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 			accepted = False
 			for _ in range(max_tries):
 				candidate = mean + math.sqrt(variance) * np.random.randn()
+
 				ok = True
 				for r in range(nrows):
 					denom_new = 1.0 + H[r, i] * candidate
@@ -240,7 +271,7 @@ def sample_beta_numba_safe(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 					bnew = candidate
 					accepted = True
 					break
-			if not accepted:
+			if (not accepted )or (abs(bnew) < 0.1):
 				# if we failed to draw a good beta_i, just set it to zero
 				bnew = 0.0
 

@@ -137,7 +137,7 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 			it += 1
  	
 
-			if it > 100000: 
+			if it > 50000: 
 				convergence_container[num] = 0
 				break
 
