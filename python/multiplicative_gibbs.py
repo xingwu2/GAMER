@@ -21,10 +21,6 @@ def circle_product_matrix(X, beta):
 def rbernoulli(p):
 	return 1 if np.random.random() < p else 0
 
-def circle_prodcut_vector(x,beta):
-	y = x * beta + 1
-	return(y)
-
 def sample_pie(gamma,pie_a,pie_b):
 	a_new = np.sum(gamma)+pie_a
 	b_new = np.sum(1-gamma)+pie_b
@@ -35,9 +31,11 @@ def sample_pie(gamma,pie_a,pie_b):
 	#pie_new = np.random.beta(a_new,b_new)
 	return(pie_new)
 
-def sample_sigma_1(beta,gamma,a_sigma,b_sigma):
-	a_new = 0.5*np.sum(gamma)+a_sigma
-	b_new = 0.5*np.sum(np.multiply(np.square(beta),gamma))+b_sigma
+def sample_sigma_1_optimized(beta,gamma,a_sigma,b_sigma):
+	active = gamma == 1
+	k = np.sum(active)
+	a_new = 0.5*k+a_sigma
+	b_new = 0.5 * np.sum(beta[active] ** 2) + b_sigma
 	sigma_1_neg2 =np.random.gamma(a_new,1.0/b_new)
 	sigma_1_new = math.sqrt(1/sigma_1_neg2)
 	return(sigma_1_new)
@@ -70,6 +68,171 @@ def sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha):
 
 
 @njit
+def sample_gamma_numba_optimized(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
+	tau = 1e-10
+	sigma_e_neg2 = sigma_e**-2
+	sigma_1_neg2 = sigma_1**-2
+	sigma_1_sq = sigma_1**2
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+	log_pie_ratio = math.log(pie / (1.0 - pie))
+
+	for i in range(ncols):
+		H_beta_neg_H_norm2 = 0.0
+		dot_val = 0.0
+		beta_i = beta[i]
+
+		if beta_i == 0.0:
+			for r in range(nrows):
+				h = H[r, i]
+				hb = H_beta[r]
+				hb_h = hb * h
+				H_beta_neg_H_norm2 += hb_h*hb_h
+				dot_val += (y[r] - C_alpha[r] - hb ) * hb_h
+		else:
+			for r in range(nrows):
+				h = H[r, i]
+				denom = 1.0 + h * beta_i
+				if math.fabs(denom) < tau:
+					## recompute H_beta[r] from scratch to avoid numerical instability
+					H_beta_nega = recompute_row_product_excluding_i(H, beta,gamma, r, i)
+				else:
+					H_beta_neg = H_beta[r] / denom
+				hb_h = H_beta_neg * h
+				H_beta_neg_H_norm2 += hb_h*hb_h
+				dot_val += (y[r] - C_alpha[r] - H_beta_neg ) * hb_h
+
+		variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
+		mean = variance * dot_val * sigma_e_neg2
+
+		log_A = -0.5 * math.log(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1.0) + 0.5 * mean * mean / variance
+		log_odds = log_pie_ratio + log_A
+
+		if log_odds > 30.0:
+			prob_gamma_1 = 1.0
+		elif log_odds < -30.0:
+			prob_gamma_1 = 0.0
+		else:
+			prob_gamma_1 = 1.0 / (1.0 + math.exp(-log_odds))
+
+		gamma[i] = rbernoulli(prob_gamma_1)
+	return(gamma)
+
+@njit
+def recompute_row_product_excluding_i(H, beta, gamma, r, exclude_i):
+	p = 1.0
+	ncols = beta.shape[0]
+	for j in range(ncols):
+		if j == exclude_i:
+			continue
+		bj = beta[j]
+		if bj != 0.0 and gamma[j] == 1:
+			p *= (1.0 + H[r, j] * bj)
+	return(p)
+
+@njit
+def sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
+	tau = 1e-10
+	sigma_e_neg2 = 1.0 / (sigma_e *sigma_e)
+	sigma_1_neg2 = 1.0 / (sigma_1 * sigma_1)
+	ncols = beta.shape[0]
+	nrows = y.shape[0]
+
+	# precompute y - C_alpha once
+	y_minus_C = np.empty(nrows)
+	for r in range(nrows):
+		y_minus_C[r] = y[r] - C_alpha[r]
+	
+	snps_processed = 0
+
+	for i in range(ncols):
+
+		beta_i_old = beta[i]
+
+		if beta_i_old != 0.0:
+			for r in range(nrows):
+				h = H[r,i]
+				denom = 1.0 + h*beta_i_old
+				if math.fabs(denom) < tau:
+					## recompute H_beta[r] from scratch to avoid numerical instability
+					H_beta[r] = recompute_row_product_excluding_i(H, beta,gamma, r, i)
+				else:
+					H_beta[r] /= denom
+
+		if gamma[i] ==0:
+			beta[i] = 0.0
+		else:
+			dot_val = 0.0
+			H_beta_neg_H_norm2 = 0.0
+
+			for r in range(nrows):
+				hb = H_beta[r]
+				h = H[r,i]
+				hb_h = hb * h
+				H_beta_neg_H_norm2 += hb_h * hb_h
+				res_val = y_minus_C[r] - hb
+				dot_val += res_val * hb_h
+			
+			variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
+			mean = variance * dot_val * sigma_e_neg2
+			beta[i] = mean + math.sqrt(variance) * np.random.randn()
+			for r in range(nrows):
+				H_beta[r] *= (1+H[r, i] * beta[i])
+			
+			## Periodic recompute to prevent drift
+			snps_processed += 1
+			if snps_processed % 50 == 0:
+				for r in range(nrows):
+					p = 1.0
+					for j in range(ncols):
+						if gamma[j] == 1 and beta[j] != 0.0:
+							p *= (1.0 + H[r, j] * beta[j])
+					H_beta[r] = p
+	return(beta,H_beta)
+
+
+
+
+
+def sample_sigma_1(beta,gamma,a_sigma,b_sigma):
+	a_new = 0.5*np.sum(gamma)+a_sigma
+	b_new = 0.5*np.sum(np.multiply(np.square(beta),gamma))+b_sigma
+	sigma_1_neg2 =np.random.gamma(a_new,1.0/b_new)
+	sigma_1_new = math.sqrt(1/sigma_1_neg2)
+	return(sigma_1_new)
+
+def circle_product_vector(x,beta):
+	y = x * beta + 1
+	return(y)
+
+
+def sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
+
+	sigma_e_neg2 = sigma_e**-2
+	sigma_1_neg2 = sigma_1**-2
+
+	for i in range(len(beta)):
+		if gamma[i] == 0:
+			H_beta = np.divide(H_beta,circle_product_vector(H[:,i], beta[i]))
+			beta[i] = 0
+		else:
+			H_beta_negi = np.divide(H_beta,circle_product_vector(H[:,i], beta[i]))
+			new_variance = 1/(np.sum((H_beta_negi*H[:,i])**2) * sigma_e_neg2+sigma_1_neg2)
+			residual = y - C_alpha -  H_beta_negi
+			new_mean = new_variance*np.dot(H_beta_negi*H[:,i],residual)*sigma_e_neg2
+			beta[i] = np.random.normal(new_mean,math.sqrt(new_variance))
+			if abs(beta[i]) < 0.05:
+				beta[i] = 0
+				H_beta = H_beta_negi
+			else:
+				H_beta = H_beta_negi * circle_product_vector(H[:,i], beta[i])
+	return(beta,H_beta)
+
+
+
+## old python or numba functions ### 
+
+@njit
 def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 	sigma_e_neg2 = sigma_e**-2
 	sigma_1_neg2 = sigma_1**-2
@@ -95,48 +258,6 @@ def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 		gamma[i] = rbernoulli(1.0-gamma_0_pie)
 	return(gamma)
 
-@njit
-def sample_gamma_numba_safe(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
-	sigma_e_neg2 = sigma_e**-2
-	sigma_1_neg2 = sigma_1**-2
-	sigma_1_sq = sigma_1**2
-	ncols = beta.shape[0]
-	nrows = y.shape[0]
-
-	for i in range(ncols):
-		H_beta_neg_H_norm2 = 0.0
-		dot_val = 0.0
-		for r in range(nrows):
-			if (1+H[r, i] * beta[i] == 0.0):
-				H_beta_neg = recompute_row_product_excluding_i(H, beta, r, i)
-			else:
-				H_beta_neg = H_beta[r] / (1+H[r, i] * beta[i])
-			H_beta_neg_H_norm2 += (H_beta_neg * H[r,i])**2
-			res_val = y[r] - C_alpha[r] - H_beta_neg 
-			dot_val += res_val * H_beta_neg * H[r, i]
-
-		f = 1.0 / np.sqrt(H_beta_neg_H_norm2 * sigma_1_sq * sigma_e_neg2 + 1)
-		variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
-
-		mean = variance * dot_val * sigma_e_neg2
-		A = f * np.exp(0.5*mean**2/variance)
-		gamma_0_pie = (1.0 - pie) / ((1.0-pie)+pie*A)
-		gamma[i] = rbernoulli(1.0-gamma_0_pie)
-	return(gamma)
-
-
-@njit
-def recompute_row_product_excluding_i(H, beta, r, exclude_i):
-	p = 1.0
-	ncols = beta.shape[0]
-	for j in range(ncols):
-		if j == exclude_i:
-			continue
-		bj = beta[j]
-		if bj != 0.0:
-			p *= (1.0 + H[r, j] * bj)
-	return(p)
-
 
 def sample_gamma(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
 	sigma_e_neg2 = sigma_e**-2
@@ -160,7 +281,6 @@ def sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 
 	sigma_e_neg2 = 1 / (sigma_e *sigma_e)
 	sigma_1_neg2 = 1 / (sigma_1 * sigma_1)
-	sigma_1_sq = sigma_1 * sigma_1
 	ncols = beta.shape[0]
 	nrows = y.shape[0]
 
@@ -199,117 +319,6 @@ def sample_beta_numba(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 			variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
 			mean = variance * dot_val * sigma_e_neg2
 			beta[i] = mean + math.sqrt(variance) * np.random.randn()
-			if abs(beta[i]) < 0.1:
-				beta[i] = 0.0
-			else:
-				for r in range(nrows):
-					H_beta[r] *= (1+H[r, i] * beta[i])
-	return(beta,H_beta)
-
-@njit
-def sample_beta_numba_safe(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
-	tau = 1e-10
-	max_tries = 50
-	sigma_e_neg2 = 1.0 / (sigma_e *sigma_e)
-	sigma_1_neg2 = 1.0 / (sigma_1 * sigma_1)
-	sigma_1_sq = sigma_1 * sigma_1
-	ncols = beta.shape[0]
-	nrows = y.shape[0]
-
-	# precompute y - C_alpha once
-	y_minus_C = np.empty(nrows)
-	for r in range(nrows):
-		y_minus_C[r] = y[r] - C_alpha[r]
-
-	for i in range(ncols):
-
-		beta_i_old = beta[i]
-
-		if beta_i_old != 0.0:
 			for r in range(nrows):
-				h = H[r,i]
-				denom = 1.0 + h*beta_i_old
-				if math.fabs(denom) < tau:
-					H_beta[r] = recompute_row_product_excluding_i(H, beta, r, i)
-				else:
-					H_beta[r] /= denom
-				
-				if not math.isfinite(H_beta[r]):
-					H_beta[r] = recompute_row_product_excluding_i(H, beta, r, i)
-
-		if gamma[i] ==0:
-			beta[i] = 0.0
-			continue
-		else:
-			dot_val = 0.0
-			H_beta_neg_H_norm2 = 0.0
-
-			for r in range(nrows):
-				hb = H_beta[r]
-				h = H[r,i]
-				hb_h = hb * h
-				H_beta_neg_H_norm2 += hb_h * hb_h
-				res_val = y_minus_C[r] - hb
-				dot_val += res_val * hb_h
-			
-			variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
-			mean = variance * dot_val * sigma_e_neg2
-			
-			## draw beta_i but will reject if that creates near-zero 1+H[r,i]*beta[i]
-			bnew = 0.0
-			accepted = False
-			for _ in range(max_tries):
-				candidate = mean + math.sqrt(variance) * np.random.randn()
-
-				ok = True
-				for r in range(nrows):
-					denom_new = 1.0 + H[r, i] * candidate
-					if math.fabs(denom_new) < tau:
-						ok = False
-						break
-				if ok:
-					bnew = candidate
-					accepted = True
-					break
-			if (not accepted )or (abs(bnew) < 0.1):
-				# if we failed to draw a good beta_i, just set it to zero
-				bnew = 0.0
-
-			beta[i] = bnew
-			if beta[i] != 0.0:
-				for r in range(nrows):
-					H_beta[r] *= (1+H[r, i] * beta[i])
-					
-					#double safety: make sure H_beta[r] is finite
-					if not math.isfinite(H_beta[r]):
-						p = 1.0
-						for j in range(ncols):
-							bj = beta[j]
-							if bj != 0.0:
-								p *= (1.0 + H[r, j] * bj)
-						H_beta[r] = p
-	return(beta,H_beta)
-
-
-
-def sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
-
-	sigma_e_neg2 = sigma_e**-2
-	sigma_1_neg2 = sigma_1**-2
-
-	for i in range(len(beta)):
-		if gamma[i] == 0:
-			H_beta = np.divide(H_beta,circle_prodcut_vector(H[:,i], beta[i]))
-			beta[i] = 0
-		else:
-			H_beta_negi = np.divide(H_beta,circle_prodcut_vector(H[:,i], beta[i]))
-			new_variance = 1/(np.sum((H_beta_negi*H[:,i])**2) * sigma_e_neg2+sigma_1_neg2)
-			residual = y - C_alpha -  H_beta_negi
-			new_mean = new_variance*np.dot(H_beta_negi*H[:,i],residual)*sigma_e_neg2
-			beta[i] = np.random.normal(new_mean,math.sqrt(new_variance))
-			if abs(beta[i]) < 0.05:
-				beta[i] = 0
-				H_beta = H_beta_negi
-			else:
-				H_beta = H_beta_negi * circle_prodcut_vector(H[:,i], beta[i])
+				H_beta[r] *= (1+H[r, i] * beta[i])
 	return(beta,H_beta)

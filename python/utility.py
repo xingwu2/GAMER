@@ -19,11 +19,13 @@ def convergence_geweke_test(trace,top5_beta_trace,start,end):
         beta_b_convergence_zscores = geweke.geweke(top_beta_convergence)[:,1]
         max_z.append(np.amax(np.absolute(beta_b_convergence_zscores)))
 
-    if np.amax(max_z) < 1.5:
+    if np.amax(max_z) < 2:
         return(1)
+    else: 
+        return(0)
 
-def welford(mean,M2,x,n):
-    n = n + 1
+def welford(mean,M2,x,it):
+    n = it + 1
 
     delta = x - mean
     mean += delta / n
@@ -48,25 +50,59 @@ def merge_welford(A_mean, A_M2,A_n,B_mean,B_M2,B_n):
 
     return(mean,M2,n_new)
 
-def vcf_processing(vcf):
-    ID = []
-    chromosome =[]
-    position = []
-    gt = []
+# def vcf_processing(vcf):
+#     ID = []
+#     chromosome =[]
+#     position = []
+#     gt = []
 
-    for v in VCF(vcf):
-        ID.append(v.ID)
-        chromosome.append(v.CHROM)
-        position.append(v.POS)
-        g = np.array(v.genotypes, dtype=np.int16)[:,:2]
-        dosage = np.sum(g,axis=1)
-        gt.append(dosage)
+#     for v in VCF(vcf):
+#         ID.append(v.ID)
+#         chromosome.append(v.CHROM)
+#         position.append(v.POS)
+#         g = np.array(v.genotypes)[:,:2]
+#         dosage = np.sum(g,axis=1)
+#         gt.append(dosage)
 
-    X = np.asfortranarray(np.vstack(gt).T, dtype=np.uint8)
+#     X = np.asfortranarray(np.vstack(gt).T, dtype=np.uint8)
 
-    print("finished loading %i variants and %i individuals" %(X.shape[1],X.shape[0]))
+#     print("finished loading %i variants and %i individuals" %(X.shape[1],X.shape[0]))
     
-    return(chromosome, ID, position, X )
+#     return(chromosome, ID, position, X )
+
+def vcf_processing(vcf):
+    # First pass: count variants and collect metadata
+    vcf_reader = VCF(vcf)
+    n_samples = len(vcf_reader.samples)
+    
+    IDs = []
+    chromosomes = []
+    positions = []
+    for v in vcf_reader:
+        IDs.append(v.ID)
+        chromosomes.append(v.CHROM)
+        positions.append(v.POS)
+    
+    n_variants = len(IDs)
+    
+    # Preallocate in Fortran order
+    X = np.zeros((n_samples, n_variants), dtype=np.uint8, order='F')
+    
+    # Second pass: fill genotypes
+    vcf_reader = VCF(vcf)
+    for i, v in enumerate(vcf_reader):
+        g = np.array(v.genotypes, dtype=np.int8)[:, :2]
+        
+        if np.any(g < 0):
+            raise ValueError(f"Missing genotype at variant {IDs[i]} (chr{chromosomes[i]}:{positions[i]}), index {i}. Impute or filter before running.")
+        
+        dosage = g[:, 0] + g[:, 1]
+        X[:, i] = dosage
+    
+    print("finished loading %i variants and %i individuals" 
+          % (X.shape[1], X.shape[0]))
+    
+    return (chromosomes, IDs, positions, X)
 
 def col_norm2_chunked(H, chunk_rows=2000, out_dtype=np.float64):
     n, p = H.shape

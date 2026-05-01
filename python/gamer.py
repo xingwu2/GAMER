@@ -1,4 +1,3 @@
-import time
 import argparse
 import numpy as np
 import pandas as pd
@@ -16,7 +15,7 @@ def main():
 	parser.add_argument('-g',type = str, action = 'store', dest = 'vcf',help = "vcf.gz file (bgzipped)")
 	parser.add_argument('-c',type = str, action = 'store', dest = 'covar')
 	parser.add_argument('-y',type = str, action = 'store', dest = 'pheno')
-	parser.add_argument('-m',type = int, action = 'store', dest = 'mode',default = "1",help="1: multiplicative;	2: additive")
+	parser.add_argument('-m',type = int, action = 'store', dest = 'model',default = 1,help="1: multiplicative;	2: additive")
 	parser.add_argument('-n',type = int, action = 'store', default = 8, dest = "num", help = 'number of MCMC chains run parallelly')
 	parser.add_argument('-v',type = int, action = 'store', dest = 'verbose',default = 0, help = "verbose levels 0: no stdout; 1: convergence and minimal stdout; 2: per MCMC iteration stdout")
 	parser.add_argument('-mb',type = float, action = 'store', default = 10, dest = "multi_pi_b", help = 'tuning parameter for pi_b in the multiplicative model')
@@ -25,6 +24,7 @@ def main():
 	args = parser.parse_args()
 
 	chromosome, ID, position, X = utility.vcf_processing(args.vcf)
+	#X = np.asfortranarray(X)
 	n = X.shape[0]
 
 	y = []
@@ -41,10 +41,14 @@ def main():
 	else:
 		C =  np.array(pd.read_csv(args.covar,sep="\t",header=None)) 
 
-	if args.mode == 1:
+	if args.model == 1:
 		prefix = args.output + "_multiplicative_"
-	else:
+	elif args.model == 2:
+		prefix = args.output + "_scaled_multiplicative_"
+	elif args.model == 3:
 		prefix = args.output + "_additive_"
+	else:
+		raise SystemError("please specificy the model type")
 
 	trace_container = mp.Manager().dict()
 	gamma_container = mp.Manager().dict()
@@ -56,19 +60,29 @@ def main():
 
 	processes = []
 
-	if args.mode == 1:
+	if args.model == 1:
 		for num in range(args.num):
 			p = mp.Process(target = multi.sampling, args=(args.verbose,y,C,X,args.output,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,args.multi_pi_b))
 			processes.append(p)
 			p.start()
-	else:
+	elif args.model == 2:
+		for num in range(args.num):
+			p = mp.Process(target = multi.sampling_scaled, args=(args.verbose,y,C,X,args.output,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,args.multi_pi_b))
+			processes.append(p)
+			p.start()
+	elif args.model == 3:
 		for num in range(args.num):
 			p = mp.Process(target = add.sampling, args=(args.verbose,y,C,X,args.output,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,args.add_pi_b))
 			processes.append(p)
 			p.start()
+		
+	else:
+		raise SystemError("please specificy the model type")
 
 	for process in processes:
-			process.join()
+		process.join()
+
+
 	convergence_all_chains = []
 	alpha_posterior_all_chains = []
 	alpha_posterior_sd_all_chains = []
@@ -77,7 +91,8 @@ def main():
 	gamma_all_chains = []
 	trace_posterior_all_chains = []
 
-	column_names = "alpha_norm_2\tbeta_norm_2\tsigma_1\tsigma_e\tlarge_beta_ratio\ttotal_heritability\tsum_gamma"
+	column_names_list = ["alpha_norm_2", "beta_norm_2", "sigma_1", "sigma_e", "beta_p99", "total_heritability", "sum_gamma"]
+
 
 	for num in range(args.num):
 		convergence_all_chains.append(convergence_container[num])
@@ -103,10 +118,10 @@ def main():
 
 		pip = np.mean(gamma_all_chains,axis=0)
 
-		beta_posterior = []
-		beta_posterior_M2 = []
-		alpha_posterior = []
-		alpha_posterior_M2 = []
+		beta_posterior = np.zeros(X.shape[1])
+		beta_posterior_M2 = np.zeros(X.shape[1])
+		alpha_posterior = np.zeros(C.shape[1])
+		alpha_posterior_M2 = np.zeros(C.shape[1])
 			
 		N_beta=0
 		N_alpha=0
@@ -120,35 +135,35 @@ def main():
 
 		beta_posterior_sd = np.sqrt(beta_posterior_M2/(N_beta-1))
 		alpha_posterior_sd = np.sqrt(alpha_posterior_M2/(N_alpha-1))
-		np.savetxt(prefix+"model_trace.txt",trace_posterior_all_chains,delimiter="\t",header=column_names)
+		np.savetxt(prefix+"model_trace.txt",trace_posterior_all_chains,delimiter="\t",header="\t".join(column_names_list))
 
 
-		OUTPUT_TRACE = open(prefix+"param.txt","w")
-		for i in range(len(trace_posterior)):
-			print("%s\t%f\t%f" %(column_names[i],trace_posterior[i],trace_posterior_sd[i]),file = OUTPUT_TRACE)
+		with open(prefix + "param.txt", "w") as OUTPUT_TRACE:
+			for i in range(len(trace_posterior)):
+				print("%s\t%f\t%f" %(column_names_list[i],trace_posterior[i],trace_posterior_sd[i]),file = OUTPUT_TRACE)
 				
-		OUTPUT_ALPHA = open(prefix+"alpha.txt","w")
-		for i in range(len(alpha_posterior)):
-			print("%f\t%f" %(alpha_posterior[i],alpha_posterior_sd[i]),file = OUTPUT_ALPHA)
+		with open(prefix+"alpha.txt","w") as OUTPUT_ALPHA:
+			for i in range(len(alpha_posterior)):
+				print("%f\t%f" %(alpha_posterior[i],alpha_posterior_sd[i]),file = OUTPUT_ALPHA)
 
-		OUTPUT_BETA = open(prefix+"beta.txt","w")
-		print("chromosome\tposition\tID\tbeta_mean\tbeta_sd\tpip",file = OUTPUT_BETA)
-		for i in range(len(beta_posterior)):
-			print("%s\t%i\t%s\t%f\t%f\t%f" %(chromosome[i],position[i],ID[i],beta_posterior[i],beta_posterior_sd[i],pip[i]),file = OUTPUT_BETA)
+		with open(prefix+"beta.txt","w") as OUTPUT_BETA:
+			print("chromosome\tposition\tID\tbeta_mean\tbeta_sd\tpip",file = OUTPUT_BETA)
+			for i in range(len(beta_posterior)):
+				print("%s\t%i\t%s\t%f\t%f\t%f" %(chromosome[i],position[i],ID[i],beta_posterior[i],beta_posterior_sd[i],pip[i]),file = OUTPUT_BETA)
 
 	else:
-		OUTPUT_TRACE = open(prefix+"param.txt","w")
-		for i in range(len(column_names)):
-			print("%s\t%s\t%s" %(column_names[i],"NA","NA"),file = OUTPUT_TRACE)
+		with open(prefix + "param.txt", "w") as OUTPUT_TRACE:
+			for i in range(len(column_names_list)):
+				print("%s\t%s\t%s" %(column_names_list[i],"NA","NA"),file = OUTPUT_TRACE)
 				
-		OUTPUT_ALPHA = open(prefix+"alpha.txt","w")
-		for i in range(C.shape[1]):
-			print("%s\t%s" %("NA","NA"),file = OUTPUT_ALPHA)
+		with open(prefix+"alpha.txt","w") as OUTPUT_ALPHA:
+			for i in range(C.shape[1]):
+				print("%s\t%s" %("NA","NA"),file = OUTPUT_ALPHA)
 
-		OUTPUT_BETA = open(prefix+"beta.txt","w")
-		print("chromosome\tposition\tID\tbeta_mean\tbeta_sd\tpip",file = OUTPUT_BETA)
-		for i in range(X.shape[1]):
-			print("%s\t%i\t%s\t%s\t%s\t%s" %(chromosome[i],position[i],ID[i],"NA","NA","NA"),file = OUTPUT_BETA)
+		with open(prefix+"beta.txt","w") as OUTPUT_BETA:
+			print("chromosome\tposition\tID\tbeta_mean\tbeta_sd\tpip",file = OUTPUT_BETA)
+			for i in range(X.shape[1]):
+				print("%s\t%i\t%s\t%s\t%s\t%s" %(chromosome[i],position[i],ID[i],"NA","NA","NA"),file = OUTPUT_BETA)
 
 if __name__ == "__main__":
 	main()
