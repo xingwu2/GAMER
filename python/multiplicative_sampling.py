@@ -20,7 +20,7 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 
 	##specify hyper parameters
 	pie_a = 1
-	pie_b = H_c*pi_b
+	pie_b = H_c * pi_b
 	a_sigma = 1
 	b_sigma = 1
 	a_e = 1

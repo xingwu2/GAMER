@@ -1,10 +1,10 @@
-setwd("~/Dropbox/software/GAMER/examples/")
+setwd("~/bin/GAMER/examples/")
 
 rm(list=ls())
 
 library(SeqArray)
 
-seqVCF2GDS("example.vcf.gz", "example.gds")
+#seqVCF2GDS("example.vcf.gz", "example.gds")
 genofile <- seqOpen("example.gds")
 
 gt <- seqGetData(genofile, "$dosage")
@@ -32,24 +32,27 @@ circle_prod <- function(X,beta){
 }
 
 
-N = 8
+N = 20
 h2 = 0.7
-sigma_1 = 0.8
+sigma_1 = 0.5
 
 i=1
 
-## simulate random effects
+## simulate beta
 beta <- rep(0,ncol(X))
 set.seed(i)
 beta_non0_index <- sort(sample(ncol(X),N))
+
 set.seed(i)
-beta[beta_non0_index] <- abs(rnorm(N,mean=0,sd=sigma_1))
+beta[beta_non0_index] <- rnorm(N,mean=0,sd=sigma_1)
 
 Xb_multi <- circle_prod(as.matrix(X),beta)
+hist(Xb_multi)
 sigma_e_2 <- (1-h2)*var(Xb_multi) / h2
 set.seed(i)
 e <- rnorm(nrow(X),mean = 0,sd = sqrt(sigma_e_2))
 y_multi <- as.matrix(C)%*%alpha + Xb_multi + e
+var(Xb_multi) / var(y_multi)
 
 name = paste("example_multi",N,h2,i,sep = "_")
 
@@ -57,7 +60,10 @@ write.table(y_multi,file = paste0(name,".txt"),append = F,quote = F,sep = "\t",r
 write.table(beta_non0_index,file = paste0(name,"_true_non0_index.txt"),append = F,quote = F,sep = "\t",row.names = F,col.names = F)
 write.table(beta,file = paste0(name,"_true_beta.txt"),append = F,quote = F,sep = "\t",row.names = F,col.names = F)
 
-test_beta <- read.delim("new_test_multiplicative_beta.txt",header=T)
+test_beta <- read.delim("test_multiplicative_beta.txt",header=T)
+
+
+
 true_beta <- read.delim("example_multi_8_0.7_1_true_beta.txt",header=F)
 true_index <- read.delim("example_multi_8_0.7_1_true_non0_index.txt",header=F)
 trace <- read.delim("example_multi_8_0.7_3_additive_model_trace.txt")

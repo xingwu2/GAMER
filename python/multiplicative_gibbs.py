@@ -95,7 +95,7 @@ def sample_gamma_numba_optimized(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_be
 				denom = 1.0 + h * beta_i
 				if math.fabs(denom) < tau:
 					## recompute H_beta[r] from scratch to avoid numerical instability
-					H_beta_nega = recompute_row_product_excluding_i(H, beta,gamma, r, i)
+					H_beta_nega = recompute_row_product_excluding_i(H, beta, r, i)
 				else:
 					H_beta_neg = H_beta[r] / denom
 				hb_h = H_beta_neg * h
@@ -119,14 +119,14 @@ def sample_gamma_numba_optimized(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_be
 	return(gamma)
 
 @njit
-def recompute_row_product_excluding_i(H, beta, gamma, r, exclude_i):
+def recompute_row_product_excluding_i(H, beta, r, exclude_i):
 	p = 1.0
 	ncols = beta.shape[0]
 	for j in range(ncols):
 		if j == exclude_i:
 			continue
 		bj = beta[j]
-		if bj != 0.0 and gamma[j] == 1:
+		if bj != 0.0 == 1:
 			p *= (1.0 + H[r, j] * bj)
 	return(p)
 
@@ -155,7 +155,7 @@ def sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 				denom = 1.0 + h*beta_i_old
 				if math.fabs(denom) < tau:
 					## recompute H_beta[r] from scratch to avoid numerical instability
-					H_beta[r] = recompute_row_product_excluding_i(H, beta,gamma, r, i)
+					H_beta[r] = recompute_row_product_excluding_i(H, beta, r, i)
 				else:
 					H_beta[r] /= denom
 
@@ -181,18 +181,18 @@ def sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 			
 			## Periodic recompute to prevent drift
 			snps_processed += 1
-			if snps_processed % 50 == 0:
+			if snps_processed % 500 == 0:
 				for r in range(nrows):
 					p = 1.0
 					for j in range(ncols):
-						if gamma[j] == 1 and beta[j] != 0.0:
+						if beta[j] != 0.0:
 							p *= (1.0 + H[r, j] * beta[j])
 					H_beta[r] = p
 	return(beta,H_beta)
 
 
 
-
+## old python or numba functions ### 
 
 def sample_sigma_1(beta,gamma,a_sigma,b_sigma):
 	a_new = 0.5*np.sum(gamma)+a_sigma
@@ -228,9 +228,6 @@ def sample_beta(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 				H_beta = H_beta_negi * circle_product_vector(H[:,i], beta[i])
 	return(beta,H_beta)
 
-
-
-## old python or numba functions ### 
 
 @njit
 def sample_gamma_numba(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta):
