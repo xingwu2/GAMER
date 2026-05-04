@@ -126,7 +126,7 @@ def recompute_row_product_excluding_i(H, beta, r, exclude_i):
 		if j == exclude_i:
 			continue
 		bj = beta[j]
-		if bj != 0.0 == 1:
+		if bj != 0.0:
 			p *= (1.0 + H[r, j] * bj)
 	return(p)
 
@@ -143,7 +143,7 @@ def sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 	for r in range(nrows):
 		y_minus_C[r] = y[r] - C_alpha[r]
 	
-	snps_processed = 0
+	#snps_processed = 0
 
 	for i in range(ncols):
 
@@ -179,15 +179,15 @@ def sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 			for r in range(nrows):
 				H_beta[r] *= (1+H[r, i] * beta[i])
 			
-			## Periodic recompute to prevent drift
-			snps_processed += 1
-			if snps_processed % 500 == 0:
-				for r in range(nrows):
-					p = 1.0
-					for j in range(ncols):
-						if beta[j] != 0.0:
-							p *= (1.0 + H[r, j] * beta[j])
-					H_beta[r] = p
+			# ## Periodic recompute to prevent drift
+			# snps_processed += 1
+			# if snps_processed % 500 == 0:
+			# 	for r in range(nrows):
+			# 		p = 1.0
+			# 		for j in range(ncols):
+			# 			if beta[j] != 0.0:
+			# 				p *= (1.0 + H[r, j] * beta[j])
+			# 		H_beta[r] = p
 	return(beta,H_beta)
 
 

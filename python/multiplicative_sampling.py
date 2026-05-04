@@ -69,6 +69,8 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 		sigma_e = m_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
 		gamma = m_gibbs.sample_gamma_numba_optimized(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
 		beta,H_beta = m_gibbs.sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+		# if it % 500 == 0:
+		# 	H_beta = m_gibbs.circle_product_matrix(H, beta)
 		alpha,C_alpha = m_gibbs.sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
 		genetic_var = np.var(H_beta)
 		total_heritability = genetic_var / (genetic_var + sigma_e**2)
