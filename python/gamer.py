@@ -16,6 +16,7 @@ def main():
 	parser.add_argument('-c',type = str, action = 'store', dest = 'covar')
 	parser.add_argument('-y',type = str, action = 'store', dest = 'pheno')
 	parser.add_argument('-m',type = int, action = 'store', dest = 'model',default = 1,help="1: multiplicative;	2: additive")
+	parser.add_argument('-r', type = bool, default=False, dest = 'recode', help = "recode the alternative allele to be phenotype-increasing alleles")
 	parser.add_argument('-n',type = int, action = 'store', default = 8, dest = "num", help = 'number of MCMC chains run parallelly')
 	parser.add_argument('-v',type = int, action = 'store', dest = 'verbose',default = 0, help = "verbose levels 0: no stdout; 1: convergence and minimal stdout; 2: per MCMC iteration stdout")
 	parser.add_argument('-mb',type = float, action = 'store', default = 10, dest = "multi_pi_b", help = 'tuning parameter for pi_b in the multiplicative model')
@@ -39,13 +40,18 @@ def main():
 		C = np.ones(n)
 		C = C.reshape(n, 1)
 	else:
-		C =  np.array(pd.read_csv(args.covar,sep="\t",header=None)) 
+		C =  np.array(pd.read_csv(args.covar,sep="\t",header=None))
+		has_intercept = np.any(np.all(np.isclose(C, 1.0, rtol=0.0, atol=1e-8), axis=0))
+		if not has_intercept:
+			C = np.column_stack([np.ones(n, dtype=float), C])
+	
+	print(args.recode)
+	if args.recode == True:
+		X, flipped_snps = utility.recode_genotype(X,y,C)
 
 	if args.model == 1:
 		prefix = args.output + "_multiplicative_"
 	elif args.model == 2:
-		prefix = args.output + "_scaled_multiplicative_"
-	elif args.model == 3:
 		prefix = args.output + "_additive_"
 	else:
 		raise SystemError("please specificy the model type")
@@ -66,11 +72,6 @@ def main():
 			processes.append(p)
 			p.start()
 	elif args.model == 2:
-		for num in range(args.num):
-			p = mp.Process(target = multi.sampling_scaled, args=(args.verbose,y,C,X,args.output,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,args.multi_pi_b))
-			processes.append(p)
-			p.start()
-	elif args.model == 3:
 		for num in range(args.num):
 			p = mp.Process(target = add.sampling, args=(args.verbose,y,C,X,args.output,num,trace_container,gamma_container,beta_container,alpha_container,convergence_container,args.add_pi_b))
 			processes.append(p)

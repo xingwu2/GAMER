@@ -115,5 +115,28 @@ def col_norm2_chunked(H, chunk_rows=2000, out_dtype=np.float64):
 
     return(out)
 
+def recode_genotype(X,y,C):
+    """
+    Recodes genotype matrix X (0, 1, 2) so the alternative allele 
+    is always the phenotype-increasing allele based on the sign of association.
+    """
+    # 1. 
+    y = np.asarray(y, dtype=float).reshape(-1)
+    N, M = X.shape
+    
+    # 2. Residualize y against covariates (y_tilde)
+    alpha_y, *_ = np.linalg.lstsq(C, y, rcond=None)
+    y_tilde = y - C @ alpha_y
 
+    # 3. Fast sign check via dot product (X^T * y_tilde)
+    # Because we only care about the sign, we bypass residualizing X
+    dot_products = X.T @ y_tilde
 
+    # 4. Identify SNPs with a negative marginal association
+    flipped_snps = dot_products < 0
+
+    # 5. Recode the negative SNPs
+    X_recoded = X.copy(order='F')
+    X_recoded[:, flipped_snps] = 2 - X_recoded[:, flipped_snps]
+
+    return (X_recoded, flipped_snps)
