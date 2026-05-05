@@ -95,7 +95,7 @@ def sample_gamma_numba_optimized(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_be
 				denom = 1.0 + h * beta_i
 				if math.fabs(denom) < tau:
 					## recompute H_beta[r] from scratch to avoid numerical instability
-					H_beta_nega = recompute_row_product_excluding_i(H, beta, r, i)
+					H_beta_neg = recompute_row_product_excluding_i(H, beta, r, i)
 				else:
 					H_beta_neg = H_beta[r] / denom
 				hb_h = H_beta_neg * h
