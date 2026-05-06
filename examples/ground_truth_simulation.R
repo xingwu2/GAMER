@@ -54,13 +54,16 @@ e <- rnorm(nrow(X),mean = 0,sd = sqrt(sigma_e_2))
 y_multi <- as.matrix(C)%*%alpha + Xb_multi + e
 var(Xb_multi) / var(y_multi)
 
-name = paste("example_multi",N,h2,i,sep = "_")
+name = paste("example",N,h2,i,sep = "_")
 
 write.table(y_multi,file = paste0(name,".txt"),append = F,quote = F,sep = "\t",row.names = F,col.names = F)
 write.table(beta_non0_index,file = paste0(name,"_true_non0_index.txt"),append = F,quote = F,sep = "\t",row.names = F,col.names = F)
 write.table(beta,file = paste0(name,"_true_beta.txt"),append = F,quote = F,sep = "\t",row.names = F,col.names = F)
 
 test_beta <- read.delim("test_multiplicative_beta.txt",header=T)
+
+
+
 
 
 

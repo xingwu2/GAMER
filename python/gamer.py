@@ -16,7 +16,7 @@ def main():
 	parser.add_argument('-c',type = str, action = 'store', dest = 'covar')
 	parser.add_argument('-y',type = str, action = 'store', dest = 'pheno')
 	parser.add_argument('-m',type = int, action = 'store', dest = 'model',default = 1,help="1: multiplicative;	2: additive")
-	parser.add_argument('-r', type = bool, default=False, dest = 'recode', help = "recode the alternative allele to be phenotype-increasing alleles")
+	parser.add_argument('-r', action='store_true', dest='recode', help = "recode the alternative allele to be phenotype-increasing alleles")
 	parser.add_argument('-n',type = int, action = 'store', default = 8, dest = "num", help = 'number of MCMC chains run parallelly')
 	parser.add_argument('-v',type = int, action = 'store', dest = 'verbose',default = 0, help = "verbose levels 0: no stdout; 1: convergence and minimal stdout; 2: per MCMC iteration stdout")
 	parser.add_argument('-mb',type = float, action = 'store', default = 10, dest = "multi_pi_b", help = 'tuning parameter for pi_b in the multiplicative model')
@@ -35,6 +35,9 @@ def main():
 			y.append(float(line))
 
 	y = np.asarray(y)
+	y_mu = y.mean()
+	y_std = y.std()
+	y = (y - y_mu) / y_std
 
 	if args.covar is None:
 		C = np.ones(n)
@@ -44,9 +47,10 @@ def main():
 		has_intercept = np.any(np.all(np.isclose(C, 1.0, rtol=0.0, atol=1e-8), axis=0))
 		if not has_intercept:
 			C = np.column_stack([np.ones(n, dtype=float), C])
+	print(C[:5,:])
 	
 	print(args.recode)
-	if args.recode == True:
+	if args.recode:
 		X, flipped_snps = utility.recode_genotype(X,y,C)
 
 	if args.model == 1:
@@ -92,7 +96,7 @@ def main():
 	gamma_all_chains = []
 	trace_posterior_all_chains = []
 
-	column_names_list = ["alpha_norm_2", "beta_norm_2", "sigma_1", "sigma_e", "beta_p99", "total_heritability", "sum_gamma"]
+	column_names_list = ["y_info","alpha_norm_2", "beta_norm_2", "sigma_1", "sigma_e", "beta_p99", "total_heritability", "sum_gamma"]
 
 
 	for num in range(args.num):
@@ -115,8 +119,10 @@ def main():
 		print(trace_posterior_all_chains.shape)
 		trace_posterior = np.mean(trace_posterior_all_chains,axis=0)
 		trace_posterior_sd = np.std(trace_posterior_all_chains,axis=0)
-			
+		trace_posterior = np.insert(trace_posterior,0,y_mu)
+		trace_posterior_sd = np.insert(trace_posterior_sd,0,y_std)
 
+	
 		pip = np.mean(gamma_all_chains,axis=0)
 
 		beta_posterior = np.zeros(X.shape[1])
