@@ -37,7 +37,13 @@ def main():
 	y = np.asarray(y)
 	y_mu = y.mean()
 	y_std = y.std()
-	y = (y - y_mu) / y_std
+	if args.model == 1:
+		# Multiplicative: only center. Dividing by std breaks the product structure
+		# because prod(1+X*beta)/std is not of the form prod(1+X*beta_new).
+		y = y - y_mu
+	elif args.model == 2:
+		# Additive: full standardization is fine; X*beta/std = X*(beta/std).
+		y = (y - y_mu) / y_std
 
 	if args.covar is None:
 		C = np.ones(n)
@@ -59,6 +65,17 @@ def main():
 		prefix = args.output + "_additive_"
 	else:
 		raise SystemError("please specificy the model type")
+
+	# Persist recode decisions for traceability when -r is used.
+	if args.recode:
+		n_flipped = int(flipped_snps.sum())
+		print("Recoded %i/%i SNPs (alt allele was phenotype-decreasing in original coding)"
+		      % (n_flipped, len(flipped_snps)))
+		with open(prefix + "flipped_snps.txt", "w") as OUTPUT_FLIPPED:
+			print("chromosome\tposition\tID\tflipped", file=OUTPUT_FLIPPED)
+			for i in range(len(flipped_snps)):
+				print("%s\t%i\t%s\t%i" % (chromosome[i], position[i], ID[i], int(flipped_snps[i])),
+				      file=OUTPUT_FLIPPED)
 
 	trace_container = mp.Manager().dict()
 	gamma_container = mp.Manager().dict()
