@@ -37,11 +37,7 @@ def main():
 	y = np.asarray(y)
 	y_mu = y.mean()
 	y_std = y.std()
-	if args.model == 1:
-		# Multiplicative: only center. Dividing by std breaks the product structure
-		# because prod(1+X*beta)/std is not of the form prod(1+X*beta_new).
-		y=y
-	elif args.model == 2:
+	if args.model == 2:
 		# Additive: full standardization is fine; X*beta/std = X*(beta/std).
 		y = (y - y_mu) / y_std
 
