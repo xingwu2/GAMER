@@ -40,7 +40,7 @@ def main():
 	if args.model == 1:
 		# Multiplicative: only center. Dividing by std breaks the product structure
 		# because prod(1+X*beta)/std is not of the form prod(1+X*beta_new).
-		y = y - y_mu
+		y=y
 	elif args.model == 2:
 		# Additive: full standardization is fine; X*beta/std = X*(beta/std).
 		y = (y - y_mu) / y_std
@@ -54,8 +54,6 @@ def main():
 		if not has_intercept:
 			C = np.column_stack([np.ones(n, dtype=float), C])
 	print(C[:5,:])
-	
-	print(args.recode)
 	if args.recode:
 		X, flipped_snps = utility.recode_genotype(X,y,C)
 

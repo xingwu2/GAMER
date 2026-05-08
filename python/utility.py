@@ -3,7 +3,7 @@ from cyvcf2 import VCF
 import geweke
 
 
-def convergence_geweke_test(trace,top5_beta_trace,start,end):
+def convergence_geweke_test(trace,start,end):
     max_z = []
 
     ## convergence for the trace values
@@ -13,13 +13,7 @@ def convergence_geweke_test(trace,top5_beta_trace,start,end):
         trace_t_convergence_zscores = geweke.geweke(trace_convergence)[:,1]
         max_z.append(np.amax(np.absolute(trace_t_convergence_zscores)))
 
-    m = top5_beta_trace.shape[1]
-    for b in range(m):
-        top_beta_convergence = top5_beta_trace[start:end,b]
-        beta_b_convergence_zscores = geweke.geweke(top_beta_convergence)[:,1]
-        max_z.append(np.amax(np.absolute(beta_b_convergence_zscores)))
-
-    if np.amax(max_z) < 2:
+    if np.amax(max_z) < 1.5:
         return(1)
     else: 
         return(0)

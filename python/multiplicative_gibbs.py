@@ -164,7 +164,7 @@ def sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 		else:
 			dot_val = 0.0
 			H_beta_neg_H_norm2 = 0.0
-
+		
 			for r in range(nrows):
 				hb = H_beta[r]
 				h = H[r,i]
@@ -176,11 +176,15 @@ def sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta):
 			variance = 1.0/ (H_beta_neg_H_norm2 * sigma_e_neg2+sigma_1_neg2)
 			mean = variance * dot_val * sigma_e_neg2
 			beta[i] = mean + math.sqrt(variance) * np.random.randn()
-			for r in range(nrows):
-				H_beta[r] *= (1+H[r, i] * beta[i])
-			
+			if abs(beta[i]) > 0.1:
+				for r in range(nrows):
+					H_beta[r] *= (1+H[r, i] * beta[i])
+				#snps_processed += 1
+			else:
+				beta[i] = 0.0
+
 			# ## Periodic recompute to prevent drift
-			# snps_processed += 1
+			
 			# if snps_processed % 500 == 0:
 			# 	for r in range(nrows):
 			# 		p = 1.0

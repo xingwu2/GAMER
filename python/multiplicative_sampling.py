@@ -34,13 +34,13 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 		print("parameter initiation:",sigma_1,sigma_e,pie)
 
 	it = 0
-	burn_in_iter = 2000
+	burn_in_iter = 10000
 
 	convergence_start_iter = burn_in_iter
 	convergence_end_iter = burn_in_iter + 10000
 
-	trace = np.empty((convergence_end_iter-burn_in_iter,7))
-	top5_beta_trace = np.empty((convergence_end_iter-burn_in_iter,5))
+	trace = np.empty((convergence_end_iter-burn_in_iter,6))
+	#top5_beta_trace = np.empty((convergence_end_iter-burn_in_iter,5))
 
 	alpha = np.random.random(size = C_c)
 	gamma = np.random.binomial(1,pie,H_c)
@@ -69,8 +69,9 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 		sigma_e = m_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
 		gamma = m_gibbs.sample_gamma_numba_optimized(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
 		beta,H_beta = m_gibbs.sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
-		# if it % 500 == 0:
-		# 	H_beta = m_gibbs.circle_product_matrix(H, beta)
+		## Periodic recompute to prevent drift
+		if it % 500 == 0:
+			H_beta = m_gibbs.circle_product_matrix(H, beta)
 		alpha,C_alpha = m_gibbs.sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
 		genetic_var = np.var(H_beta)
 		total_heritability = genetic_var / (genetic_var + sigma_e**2)
@@ -85,13 +86,11 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 			print(it,str(after - before),pie,sigma_1,sigma_e,np.sum(gamma),beta_p99,np.max(np.abs(beta)),total_heritability)
 
 		if it >= burn_in_iter:
-			trace[it-burn_in_iter,:] = [alpha_norm,beta_norm,sigma_1,sigma_e,beta_p99,total_heritability,np.sum(gamma)]
-			top5_beta_trace[it-burn_in_iter,:] = np.sort(np.absolute(beta))[::-1][:5]
+			trace[it-burn_in_iter,:] = [alpha_norm,beta_norm,sigma_e,beta_p99,total_heritability,np.sum(gamma)]
 
 		## test for convergence using values in trace from multiple consecutive draws
-			
 		if it == convergence_end_iter - 1:
-			convergence_scores = utility.convergence_geweke_test(trace,top5_beta_trace,convergence_start_iter-burn_in_iter,convergence_end_iter-burn_in_iter)
+			convergence_scores = utility.convergence_geweke_test(trace,convergence_start_iter-burn_in_iter,convergence_end_iter-burn_in_iter)
 
 			if convergence_scores == 1:
 				convergence_container[num] = 1
@@ -100,10 +99,10 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 					print("trace values:", trace[it-burn_in_iter,:])
 				break
 			else:
-				trace_ = np.empty((1000,7))
-				top5_beta_trace_ = np.empty((1000,5))
+				trace_ = np.empty((1000,6))
+				#top5_beta_trace_ = np.empty((1000,5))
 				trace = np.concatenate((trace[-(convergence_end_iter - burn_in_iter-1000):,:],trace_),axis=0)
-				top5_beta_trace = np.concatenate((top5_beta_trace[-(convergence_end_iter - burn_in_iter-1000):,:],top5_beta_trace_),axis = 0)
+				#top5_beta_trace = np.concatenate((top5_beta_trace[-(convergence_end_iter - burn_in_iter-1000):,:],top5_beta_trace_),axis = 0)
 
 				burn_in_iter += 1000
 				convergence_start_iter += 1000
@@ -111,7 +110,7 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 
 		it += 1
  	
-		if it > 100000: 
+		if it > 500000: 
 			convergence_container[num] = 0
 			break
 
@@ -143,6 +142,9 @@ def sampling(verbose,y,C,H,prefix,num,trace_container,gamma_container,beta_conta
 			sigma_e = m_gibbs.sample_sigma_e(y,H_beta,C_alpha,a_e,b_e)
 			gamma = m_gibbs.sample_gamma_numba_optimized(y,C_alpha,H,beta,pie,sigma_1,sigma_e,gamma,H_beta)
 			beta,H_beta = m_gibbs.sample_beta_numba_optimized(y,C_alpha,H,beta,gamma,sigma_1,sigma_e,H_beta)
+			## Periodic recompute to prevent drift
+			if it % 500 == 0:
+				H_beta = m_gibbs.circle_product_matrix(H, beta)
 			alpha,C_alpha = m_gibbs.sample_alpha(y,C,alpha,sigma_e,H_beta,C_alpha)
 			genetic_var = np.var(H_beta)
 			total_heritability = genetic_var / (genetic_var + sigma_e**2)
